@@ -1,0 +1,384 @@
+/* ==========================================================================
+   DFMS Design System
+   Custom CSS with variables — no Bootstrap, no Tailwind.
+   This file is the new foundation. Pages not yet migrated off the Tailwind
+   CDN keep working alongside it until their module is rebuilt.
+   ========================================================================== */
+
+:root {
+    --primary: #16a34a;
+    --primary-dark: #15803d;
+    --heading: #0f2318;
+    --page-bg: #f1f5f0;
+    --card-bg: #ffffff;
+    --border: #e8f0e8;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --info: #3b82f6;
+    --text: #374151;
+    --text-muted: #6b7280;
+
+    --brand-cream: #faf6ec;
+    --brand-gold: #d6a429;
+    --brand-gold-soft: #f0c869;
+
+    --font-heading: 'Outfit', 'Segoe UI', sans-serif;
+    --font-body: 'Inter', 'Segoe UI', sans-serif;
+    --font-accent: 'Fraunces', Georgia, serif;
+
+    --sidebar-width: 240px;
+    --sidebar-width-collapsed: 68px;
+    --topbar-height: 64px;
+    --bottom-nav-height: 64px;
+    --radius-card: 14px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body.dfms {
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--text);
+    font-family: var(--font-body);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    color: var(--heading);
+    margin: 0;
+}
+
+a {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+/* ---------- Layout shell ---------- */
+
+.dfms-shell {
+    display: flex;
+    min-height: 100vh;
+}
+
+.dfms-sidebar {
+    width: var(--sidebar-width);
+    background: var(--card-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: width 0.2s ease;
+}
+
+.dfms-sidebar.collapsed {
+    width: var(--sidebar-width-collapsed);
+}
+
+.dfms-sidebar-brand {
+    height: var(--topbar-height);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 1rem;
+    font-family: var(--font-heading);
+    font-weight: 800;
+    color: var(--heading);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.dfms-nav {
+    flex: 1;
+    padding: 0.75rem;
+    overflow-y: auto;
+}
+
+.dfms-nav-section-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 0.75rem 0.75rem 0.25rem;
+}
+
+.dfms-nav a {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    color: var(--text);
+    font-weight: 500;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.dfms-nav a:hover {
+    background: var(--page-bg);
+}
+
+.dfms-nav a.active {
+    background: var(--primary);
+    color: #fff;
+}
+
+.dfms-sidebar-footer {
+    border-top: 1px solid var(--border);
+    padding: 0.75rem;
+}
+
+.dfms-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.dfms-topbar {
+    height: var(--topbar-height);
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.dfms-topbar-user {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--text);
+}
+
+.dfms-content {
+    flex: 1;
+    padding: 1.5rem;
+}
+
+/* ---------- Mobile top bar + bottom nav ---------- */
+
+.dfms-mobile-topbar {
+    display: none;
+    height: var(--topbar-height);
+    background: var(--primary);
+    color: #fff;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+}
+
+.dfms-mobile-topbar button {
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 1.4rem;
+    line-height: 1;
+    padding: 0.5rem;
+    min-width: 44px;
+    min-height: 44px;
+}
+
+.dfms-bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--bottom-nav-height);
+    background: var(--card-bg);
+    border-top: 1px solid var(--border);
+    z-index: 30;
+}
+
+.dfms-bottom-nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    display: flex;
+}
+
+.dfms-bottom-nav li {
+    flex: 1;
+}
+
+.dfms-bottom-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    height: 100%;
+    min-height: 44px;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.dfms-bottom-nav a.active {
+    color: var(--primary);
+}
+
+.dfms-drawer-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 40;
+}
+
+.dfms-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 80%;
+    max-width: 300px;
+    background: var(--card-bg);
+    z-index: 41;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    overflow-y: auto;
+}
+
+.dfms-drawer.open {
+    transform: translateX(0);
+}
+
+.dfms-drawer-backdrop.open {
+    display: block;
+}
+
+@media (max-width: 1023px) {
+    .dfms-sidebar {
+        display: none;
+    }
+
+    .dfms-mobile-topbar {
+        display: flex;
+    }
+
+    .dfms-bottom-nav {
+        display: block;
+    }
+
+    .dfms-content {
+        padding: 1rem;
+        padding-bottom: calc(var(--bottom-nav-height) + 1.5rem);
+    }
+}
+
+/* ---------- Shared components ---------- */
+
+.dfms-card {
+    background: var(--card-bg);
+    border-radius: var(--radius-card);
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    padding: 1.25rem;
+}
+
+.dfms-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 44px;
+    padding: 0 1.1rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.dfms-btn-primary {
+    background: var(--primary);
+    color: #fff;
+}
+
+.dfms-btn-primary:hover {
+    background: var(--primary-dark);
+}
+
+.dfms-btn-secondary {
+    background: var(--card-bg);
+    border-color: var(--border);
+    color: var(--text);
+}
+
+.dfms-btn-danger {
+    background: var(--danger);
+    color: #fff;
+}
+
+.dfms-field {
+    margin-bottom: 1rem;
+}
+
+.dfms-field label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.35rem;
+}
+
+.dfms-field input,
+.dfms-field select,
+.dfms-field textarea {
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.5rem 0.75rem;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    background: #fff;
+}
+
+.dfms-field textarea {
+    min-height: 90px;
+}
+
+.dfms-alert {
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.dfms-alert-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+}
+
+.dfms-alert-success {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+}
+
+/* ---------- Focus states ---------- */
+
+.dfms-field input:focus-visible,
+.dfms-field select:focus-visible,
+.dfms-field textarea:focus-visible,
+.dfms-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}

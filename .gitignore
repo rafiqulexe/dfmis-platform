@@ -1,0 +1,19 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+# Environment / secrets — never commit real credentials
+.env
+.env.local
+
+# Claude Code session-local state and global skill bundle (tooling, not project content)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/skills/
+
+# Dependencies (introduced later for PDF/Excel export)
+vendor/
+node_modules/
+
+# Local scratch
+*.log

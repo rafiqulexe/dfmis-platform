@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dfms-php",
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["-S", "localhost:8000", "-t", "."],
+      "port": 8000
+    },
+    {
+      "name": "dfms-php-preview",
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["-S", "localhost:8010", "-t", "."],
+      "port": 8010
+    }
+  ]
+}

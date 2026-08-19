@@ -1,0 +1,119 @@
+Project Proposal: Simplified Dairy Farm Management System (DFMS) with Admin Login
+1. Introduction
+
+The proposed project is a Simplified Dairy Farm Management System (DFMS) designed for demonstration purposes as part of a university project. The system aims to automate essential dairy farming operations, focusing on simplicity while showcasing core functionalities. An admin login feature is included to secure the system and manage access to administrative functionalities.
+2. Objectives
+
+    Automate Key Operations: Reduce manual labor and minimize errors by automating critical tasks in dairy farm management.
+    Simplify Data Management: Provide a straightforward database schema for efficient data storage and retrieval.
+    Enhance Security: Implement an admin login system to protect sensitive data and restrict access to authorized personnel.
+    Demonstrate Core Functionalities: Showcase fundamental aspects of farm management in a simplified manner suitable for a university demo.
+
+3. Scope of Work
+3.1 Core Functionalities
+
+    Animal Identification and Health Tracking
+        Record basic cow information with unique identification.
+        Track health events such as vaccinations and health check-ups.
+
+    Automated Feeding Management
+        Define feeding schedules for the herd.
+        Track total feed consumption to monitor efficiency.
+
+    Milk Production Tracking
+        Record daily milk yield for the herd.
+        Generate simple reports on milk production.
+
+    Inventory Management
+        Manage inventory items like feed and medical supplies.
+        Monitor inventory levels and receive low-stock alerts.
+
+    Environmental Monitoring
+        Record temperature readings in the barn.
+        Generate alerts if temperatures exceed preset thresholds.
+
+    Reporting and Alerts
+        Generate basic reports on health, production, and inventory.
+        Provide alerts for critical events like health issues or inventory shortages.
+
+3.2 Admin Login Functionality
+
+    Secure access to the system via an admin login.
+    Manage admin credentials securely using password hashing.
+    Restrict access to administrative features to authorized users.
+
+4. Technical Approach
+4.1 Technology Stack
+
+    Backend: PHP
+    Database: MySQL
+    Frontend: HTML/CSS (basic forms and pages)
+
+4.2 Database Schema
+
+A simplified database schema will be created based on the provided SQL script, consisting of the following tables:
+
+    admin_users: Stores admin credentials securely.
+    cows: Contains cow information.
+    health_events: Tracks health events related to cows.
+    feeding_schedules: Manages feeding times and types.
+    feed_consumption: Records total feed consumption.
+    milk_production: Logs daily milk production.
+    inventory_items: Lists inventory items.
+    inventory_levels: Tracks inventory quantities.
+    temperature_readings: Records environmental temperatures.
+    alerts: Logs critical alerts for the farm.
+
+4.3 Security Measures
+
+    Password Security: Use password_hash() and password_verify() for secure password storage and verification.
+    Session Management: Utilize PHP sessions to manage user authentication.
+    Input Sanitization: Implement prepared statements to prevent SQL injection.
+
+5. Implementation Plan
+Week 1: Database Setup
+
+    Create the MySQL database and tables based on the simplified SQL script.
+    Test database connections from the PHP application.
+
+Week 2: Admin Login Implementation
+
+    Develop the admin registration script (for initial setup).
+    Create the admin login form and authentication script.
+    Implement session management for logged-in admins.
+
+Week 3: Core Functionality Development
+
+    Build forms and scripts for:
+        Adding and viewing cow information.
+        Recording health events.
+        Managing feeding schedules.
+        Logging feed consumption and milk production.
+        Managing inventory items and levels.
+        Recording temperature readings.
+    Implement alert generation for critical events.
+
+Week 4: Testing and Documentation
+
+    Perform thorough testing of all functionalities.
+    Fix bugs and make necessary adjustments.
+    Prepare documentation, including:
+        User guide for the application.
+        Technical documentation of the code and database schema.
+
+6. Expected Deliverables
+
+    Functional Web Application: A PHP-based web application demonstrating the core functionalities of the DFMS with admin login.
+    Database Schema: A MySQL database with tables and relationships as per the simplified script.
+    Documentation: Comprehensive documentation covering installation, usage, and technical details.
+
+7. Benefits
+
+    Educational Value: Demonstrates the application of PHP and MySQL in building a functional management system.
+    Usability: Simplified interface requiring minimal training.
+    Scalability: Foundation that can be expanded upon for future enhancements.
+    Security: Basic security measures to protect data and restrict access.
+
+8. Conclusion
+
+This project will deliver a simplified yet functional Dairy Farm Management System suitable for a university project demonstration. It focuses on essential features, ensuring ease of understanding and showcasing fundamental concepts in web application development and database management.
