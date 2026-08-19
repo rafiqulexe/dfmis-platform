@@ -1,119 +1,2128 @@
-Project Proposal: Simplified Dairy Farm Management System (DFMS) with Admin Login
-1. Introduction
+# DFMIS — MASTER PRODUCT, ARCHITECTURE & SAAS PROPOSAL
 
-The proposed project is a Simplified Dairy Farm Management System (DFMS) designed for demonstration purposes as part of a university project. The system aims to automate essential dairy farming operations, focusing on simplicity while showcasing core functionalities. An admin login feature is included to secure the system and manage access to administrative functionalities.
-2. Objectives
+VERSION: 2.0
+STATUS: MASTER PRODUCT SPECIFICATION
+PRODUCT: DFMIS — Farm Management & Intelligence System
+LONG-TERM MODEL: MULTI-TENANT SaaS
+INITIAL VERTICAL: Dairy / Livestock
+TARGET PROFESSIONAL PLAN: Approximately $200/month
+CURRENT ENVIRONMENT: Initial farm / development customer
+CURRENT IMPLEMENTATION: PHP + MySQL/MariaDB
 
-    Automate Key Operations: Reduce manual labor and minimize errors by automating critical tasks in dairy farm management.
-    Simplify Data Management: Provide a straightforward database schema for efficient data storage and retrieval.
-    Enhance Security: Implement an admin login system to protect sensitive data and restrict access to authorized personnel.
-    Demonstrate Core Functionalities: Showcase fundamental aspects of farm management in a simplified manner suitable for a university demo.
+============================================================
+0. IMPORTANT — THIS DOCUMENT OVERRIDES THE ORIGINAL PROJECT SCOPE
+============================================================
 
-3. Scope of Work
-3.1 Core Functionalities
+The original project proposal described a:
 
-    Animal Identification and Health Tracking
-        Record basic cow information with unique identification.
-        Track health events such as vaccinations and health check-ups.
+"Simplified Dairy Farm Management System for university
+demonstration purposes."
 
-    Automated Feeding Management
-        Define feeding schedules for the herd.
-        Track total feed consumption to monitor efficiency.
+That is no longer the long-term product vision.
 
-    Milk Production Tracking
-        Record daily milk yield for the herd.
-        Generate simple reports on milk production.
+The current project is being transformed into a:
 
-    Inventory Management
-        Manage inventory items like feed and medical supplies.
-        Monitor inventory levels and receive low-stock alerts.
+PROFESSIONAL FARM MANAGEMENT & INTELLIGENCE PLATFORM
 
-    Environmental Monitoring
-        Record temperature readings in the barn.
-        Generate alerts if temperatures exceed preset thresholds.
+with a future:
 
-    Reporting and Alerts
-        Generate basic reports on health, production, and inventory.
-        Provide alerts for critical events like health issues or inventory shortages.
+MULTI-TENANT SAAS BUSINESS MODEL.
 
-3.2 Admin Login Functionality
+The original university requirements remain useful as the
+foundation and demonstration scope, but they are no longer the
+quality, architecture, or product ceiling.
 
-    Secure access to the system via an admin login.
-    Manage admin credentials securely using password hashing.
-    Restrict access to administrative features to authorized users.
+Do NOT throw away the existing project.
 
-4. Technical Approach
-4.1 Technology Stack
+Do NOT blindly rebuild everything.
 
-    Backend: PHP
-    Database: MySQL
-    Frontend: HTML/CSS (basic forms and pages)
+Instead:
 
-4.2 Database Schema
+1. Audit the current implementation against this master proposal.
+2. Preserve working functionality.
+3. Preserve good architectural decisions.
+4. Identify architectural conflicts.
+5. Fix foundational problems before they become expensive.
+6. Continue development incrementally.
+7. Do not introduce unnecessary complexity.
+8. Do not build future SaaS features before they are needed.
 
-A simplified database schema will be created based on the provided SQL script, consisting of the following tables:
+The goal is:
 
-    admin_users: Stores admin credentials securely.
-    cows: Contains cow information.
-    health_events: Tracks health events related to cows.
-    feeding_schedules: Manages feeding times and types.
-    feed_consumption: Records total feed consumption.
-    milk_production: Logs daily milk production.
-    inventory_items: Lists inventory items.
-    inventory_levels: Tracks inventory quantities.
-    temperature_readings: Records environmental temperatures.
-    alerts: Logs critical alerts for the farm.
+PRODUCTION-QUALITY CORE TODAY
++
+SAAS-READY ARCHITECTURE
++
+MULTI-FARM FUTURE
++
+MULTI-VERTICAL FUTURE
++
+AI INTELLIGENCE
 
-4.3 Security Measures
+============================================================
+1. PRODUCT VISION
+============================================================
 
-    Password Security: Use password_hash() and password_verify() for secure password storage and verification.
-    Session Management: Utilize PHP sessions to manage user authentication.
-    Input Sanitization: Implement prepared statements to prevent SQL injection.
+DFMIS stands for:
 
-5. Implementation Plan
-Week 1: Database Setup
+Dairy / Farm Management & Intelligence System
 
-    Create the MySQL database and tables based on the simplified SQL script.
-    Test database connections from the PHP application.
+The long-term commercial product should be positioned as:
 
-Week 2: Admin Login Implementation
+FARM INTELLIGENCE PLATFORM
 
-    Develop the admin registration script (for initial setup).
-    Create the admin login form and authentication script.
-    Implement session management for logged-in admins.
+Core positioning:
 
-Week 3: Core Functionality Development
+"Run Your Farm With Intelligence."
 
-    Build forms and scripts for:
-        Adding and viewing cow information.
-        Recording health events.
-        Managing feeding schedules.
-        Logging feed consumption and milk production.
-        Managing inventory items and levels.
-        Recording temperature readings.
-    Implement alert generation for critical events.
+The platform should eventually support multiple types of
+agricultural and livestock operations.
 
-Week 4: Testing and Documentation
+The system must NOT become permanently dependent on cows,
+milk production, or dairy-specific concepts.
 
-    Perform thorough testing of all functionalities.
-    Fix bugs and make necessary adjustments.
-    Prepare documentation, including:
-        User guide for the application.
-        Technical documentation of the code and database schema.
+Dairy/livestock is the INITIAL vertical.
 
-6. Expected Deliverables
+The architecture must support future expansion into:
 
-    Functional Web Application: A PHP-based web application demonstrating the core functionalities of the DFMS with admin login.
-    Database Schema: A MySQL database with tables and relationships as per the simplified script.
-    Documentation: Comprehensive documentation covering installation, usage, and technical details.
+LIVESTOCK
+- Dairy cattle
+- Beef cattle
+- Goats
+- Sheep
+- Buffalo
+- Horses
+- Camels
+- Other livestock
 
-7. Benefits
+POULTRY
+- Broiler
+- Layer
+- Duck
+- Turkey
+- Other poultry
 
-    Educational Value: Demonstrates the application of PHP and MySQL in building a functional management system.
-    Usability: Simplified interface requiring minimal training.
-    Scalability: Foundation that can be expanded upon for future enhancements.
-    Security: Basic security measures to protect data and restrict access.
+AQUACULTURE
+- Fish
+- Shrimp
+- Other aquaculture
 
-8. Conclusion
+AGRICULTURE
+- Crop farms
+- Orchards
+- Greenhouses
+- Mixed farms
 
-This project will deliver a simplified yet functional Dairy Farm Management System suitable for a university project demonstration. It focuses on essential features, ensuring ease of understanding and showcasing fundamental concepts in web application development and database management.
+The long-term platform should allow a customer to select and
+configure their farm type and receive the appropriate modules.
+
+============================================================
+2. CORE PRODUCT PRINCIPLE
+============================================================
+
+The architecture must separate:
+
+CORE FARM PLATFORM
+
+from:
+
+FARM-TYPE MODULES
+
+and:
+
+SPECIALIZED INTELLIGENCE.
+
+Think:
+
+GENERAL FARM PLATFORM
++
+SPECIALIZED FARM MODULES
++
+FARM-TYPE-AWARE AI
+
+NOT:
+
+"Cow Management System with unrelated features attached."
+
+============================================================
+3. PRODUCT ARCHITECTURE
+============================================================
+
+Long-term hierarchy:
+
+PLATFORM
+    ↓
+ORGANIZATION / CUSTOMER
+    ↓
+FARM
+    ↓
+LOCATION / BARN / FIELD / POND / HOUSE
+    ↓
+FARM-SPECIFIC ENTITY
+
+Examples:
+
+Livestock:
+Organization
+→ Farm
+→ Barn
+→ Animal
+
+Poultry:
+Organization
+→ Farm
+→ Poultry House
+→ Flock
+
+Aquaculture:
+Organization
+→ Farm
+→ Pond/Tank
+→ Stock/Species
+
+Crop:
+Organization
+→ Farm
+→ Field
+→ Crop
+
+Greenhouse:
+Organization
+→ Farm
+→ Greenhouse/Zone
+→ Crop
+
+Do not force all farm types into the same specialized data model.
+
+============================================================
+4. SAAS BUSINESS MODEL
+============================================================
+
+The long-term goal is a commercial multi-tenant SaaS platform.
+
+Customers should subscribe to DFMIS rather than purchase a
+one-time PHP application.
+
+The platform should eventually support:
+
+- multiple organizations
+- multiple farms per organization
+- multiple users
+- role-based permissions
+- subscription plans
+- usage limits
+- AI usage limits
+- storage limits
+- feature flags
+- billing
+- invoices
+- customer onboarding
+- SaaS platform administration
+- support
+- integrations
+- API access
+
+DO NOT build the complete billing/subscription system now.
+
+But the core architecture must not prevent it.
+
+============================================================
+5. INITIAL CUSTOMER / TENANT
+============================================================
+
+The current application represents the first farm/customer.
+
+Current farm:
+
+Green Valley Dairy Farm
+
+Treat this as the initial tenant.
+
+The current interface may remain focused on this farm.
+
+However, the database/backend architecture must establish proper
+tenant boundaries.
+
+Future example:
+
+Organization A
+├── Farm A1
+└── Farm A2
+
+Organization B
+└── Farm B1
+
+Organization C
+├── Farm C1
+├── Farm C2
+└── Farm C3
+
+============================================================
+6. MULTI-TENANCY ARCHITECTURE
+============================================================
+
+Tenant isolation is a FIRST-CLASS SECURITY REQUIREMENT.
+
+Do not postpone tenant isolation until all modules are built.
+
+Evaluate and implement the minimum appropriate foundation now.
+
+Potential structure:
+
+organizations
+organization_users
+farms
+farm_users
+
+with appropriate relationships.
+
+A farm belongs to exactly one organization.
+
+Users may eventually belong to one or more organizations and may
+have different permissions across farms.
+
+The exact implementation should be selected based on the current
+codebase and future scalability requirements.
+
+Do not over-engineer.
+
+Do not create unnecessary abstractions.
+
+============================================================
+7. TENANT CONTEXT
+============================================================
+
+Create a centralized and secure mechanism for determining:
+
+current user
+current organization
+current farm
+allowed organizations
+allowed farms
+permissions
+
+Tenant context must be determined server-side.
+
+Do NOT trust:
+
+- URL parameters
+- hidden fields
+- JavaScript
+- client-supplied organization IDs
+- client-supplied farm IDs
+
+Every tenant-owned record must be accessed through authorized
+tenant context.
+
+============================================================
+8. IDOR / CROSS-TENANT SECURITY
+============================================================
+
+A user must never be able to access another tenant's data by
+changing:
+
+?id=123
+
+or POST data.
+
+Example:
+
+/modules/cows/view.php?id=123
+
+must verify that cow 123 belongs to a farm the current user
+is authorized to access.
+
+The same applies to:
+
+- cows
+- health records
+- milk records
+- inventory
+- medicine
+- finance
+- reports
+- alerts
+- documents
+- uploaded files
+- audit logs
+- AI assessments
+
+Test direct URL access and manipulated IDs.
+
+============================================================
+9. CORE PLATFORM MODULES
+============================================================
+
+These modules should be farm-type independent where possible.
+
+CORE:
+
+1. Organization Management
+2. Farm Management
+3. Locations
+4. Users
+5. Roles
+6. Permissions
+7. Dashboard
+8. Global Search
+9. Notifications
+10. Alerts
+11. Tasks
+12. Inventory
+13. Suppliers
+14. Purchases
+15. Expenses
+16. Revenue
+17. Finance
+18. Documents
+19. Reports
+20. Analytics
+21. Audit Logs
+22. Settings
+23. AI Assistant
+24. AI Usage Tracking
+25. Activity History
+
+============================================================
+10. LIVESTOCK MODULE
+============================================================
+
+Initial specialized vertical.
+
+Support:
+
+- dairy cattle
+- beef cattle
+- goats
+- sheep
+- buffalo
+- horses
+- other livestock
+
+Core livestock information:
+
+- animal ID
+- RFID/tag
+- name
+- species
+- breed
+- sex
+- birth date
+- weight
+- acquisition
+- location
+- status
+
+Health:
+
+- health events
+- symptoms
+- conditions
+- veterinary visits
+- treatment
+- medication
+- vaccination
+- temperature
+- recovery
+- recurring issues
+
+Reproduction:
+
+- heat
+- insemination
+- pregnancy
+- pregnancy checks
+- expected birth
+- actual birth
+- abortion
+- reproductive history
+
+Production should be modular.
+
+For dairy:
+
+- milk production
+- lactation
+- milking sessions
+- milk quality where supported
+
+For beef:
+
+- weight gain
+- growth
+- body condition
+- production metrics
+
+For other livestock, specialized metrics can be introduced later.
+
+============================================================
+11. POULTRY MODULE
+============================================================
+
+Future module.
+
+Support:
+
+- broiler
+- layer
+- duck
+- turkey
+
+Track:
+
+- flock
+- breed
+- house
+- age
+- population
+- mortality
+- feed
+- weight
+- vaccination
+- disease
+- egg production
+- hatchery information where applicable
+
+Analytics:
+
+- mortality rate
+- feed conversion
+- growth
+- egg production
+- flock performance
+
+Do NOT implement immediately unless required.
+
+Architecture must allow it later.
+
+============================================================
+12. AQUACULTURE MODULE
+============================================================
+
+Future module.
+
+Support:
+
+- fish
+- shrimp
+- other aquatic species
+
+Track:
+
+- pond/tank
+- species
+- stocking
+- population
+- feed
+- water quality
+- mortality
+- growth
+- treatment
+- harvest
+
+Potential environmental metrics:
+
+- temperature
+- pH
+- dissolved oxygen
+- salinity
+- other sensor data
+
+Do not fabricate real-time sensor data.
+
+============================================================
+13. CROP MODULE
+============================================================
+
+Future module.
+
+Track:
+
+- fields
+- crops
+- varieties
+- planting
+- growth
+- irrigation
+- fertilizer
+- pesticide
+- weather
+- pests
+- diseases
+- harvest
+- yield
+
+Analytics:
+
+- yield
+- cost per area
+- input cost
+- irrigation
+- productivity
+
+============================================================
+14. GREENHOUSE MODULE
+============================================================
+
+Future module.
+
+Track:
+
+- greenhouse
+- zones
+- crops
+- temperature
+- humidity
+- irrigation
+- nutrients
+- growth
+- harvest
+
+Future IoT/sensor integration should be possible.
+
+============================================================
+15. FARM-TYPE CONFIGURATION
+============================================================
+
+Introduce a farm-type concept.
+
+Examples:
+
+LIVESTOCK
+POULTRY
+AQUACULTURE
+CROP
+GREENHOUSE
+MIXED
+
+Potential subtypes:
+
+DAIRY
+BEEF
+GOAT
+SHEEP
+BROILER
+LAYER
+SHRIMP
+FISH
+RICE
+VEGETABLE
+FRUIT
+etc.
+
+Do not hardcode the entire application around one farm type.
+
+The dashboard and navigation should eventually adapt based on
+the farm's configuration.
+
+============================================================
+16. MODULAR FEATURE ARCHITECTURE
+============================================================
+
+The platform should eventually support enabling/disabling
+specialized modules.
+
+Example:
+
+CORE
+✓ Dashboard
+✓ Users
+✓ Finance
+✓ Inventory
+✓ Suppliers
+✓ Reports
+✓ Alerts
+✓ AI
+✓ Settings
+
+LIVESTOCK
+✓ Animals
+✓ Health
+✓ Vaccination
+✓ Breeding
+✓ Feed
+✓ Production
+
+DAIRY
+✓ Milk
+✓ Lactation
+✓ Milking
+
+POULTRY
+✓ Flocks
+✓ Eggs
+✓ Mortality
+✓ Vaccination
+
+AQUACULTURE
+✓ Ponds
+✓ Water Quality
+✓ Feeding
+✓ Harvest
+
+CROP
+✓ Fields
+✓ Crops
+✓ Irrigation
+✓ Fertilization
+✓ Harvest
+
+This should eventually support plan-based feature flags.
+
+============================================================
+17. FARM COMMAND CENTER
+============================================================
+
+The dashboard is not a generic admin dashboard.
+
+It is the:
+
+FARM COMMAND CENTER.
+
+Within approximately 10 seconds, users should understand:
+
+1. Is my farm healthy?
+2. What is happening?
+3. What requires attention?
+4. What is changing?
+5. What should I do next?
+
+The dashboard should prioritize:
+
+- critical alerts
+- health risks
+- production
+- inventory
+- finance
+- upcoming events
+- AI insights
+
+Avoid a wall of equal-sized cards.
+
+Use hierarchy.
+
+============================================================
+18. FARM-TYPE-AWARE DASHBOARD
+============================================================
+
+Dashboard content must eventually adapt to farm type.
+
+DAIRY:
+
+- milk
+- herd
+- health
+- feed
+- breeding
+
+POULTRY:
+
+- flock
+- eggs
+- mortality
+- feed
+- vaccination
+
+AQUACULTURE:
+
+- biomass
+- water quality
+- mortality
+- feed
+- growth
+- harvest
+
+CROP:
+
+- yield
+- field health
+- weather
+- irrigation
+- input costs
+- harvest
+
+The dashboard should not display irrelevant metrics.
+
+============================================================
+19. AI FARM ASSISTANT
+============================================================
+
+Create a general:
+
+FARM AI ASSISTANT
+
+It must understand:
+
+- organization
+- farm
+- farm type
+- location
+- records
+- metrics
+- alerts
+- history
+- current operational context
+
+The AI should become farm-type aware.
+
+Examples:
+
+DAIRY:
+
+"Milk production decreased 8% compared with the previous
+7-day average."
+
+POULTRY:
+
+"Mortality increased in Flock B."
+
+AQUACULTURE:
+
+"Dissolved oxygen has fallen below the configured threshold."
+
+CROP:
+
+"Field 7 is showing lower expected yield."
+
+The AI should not generate irrelevant recommendations.
+
+============================================================
+20. AI VETERINARY / HEALTH ASSISTANT
+============================================================
+
+For livestock and other relevant animal operations, provide
+AI-assisted health decision support.
+
+Inputs may include:
+
+- animal information
+- species
+- breed
+- age
+- weight
+- symptoms
+- temperature
+- behavior
+- appetite
+- stool
+- urine
+- breathing
+- production changes
+- health history
+- vaccination
+- treatment
+- images
+
+Output:
+
+- possible conditions
+- risk
+- urgency
+- supporting observations
+- recommended next steps
+- questions for veterinarian
+- follow-up
+
+IMPORTANT:
+
+This is NOT a definitive diagnostic system.
+
+Always communicate:
+
+"AI-assisted assessment. This does not replace a licensed
+veterinarian."
+
+Never fabricate certainty.
+
+Never claim unsupported medical facts.
+
+============================================================
+21. AI IMAGE ANALYSIS
+============================================================
+
+Where technically appropriate, allow image uploads for
+AI-assisted assessment.
+
+Potential livestock use cases:
+
+- visible wounds
+- skin abnormalities
+- swelling
+- eye issues
+- hoof issues
+- body condition
+
+Future use cases may include:
+
+- poultry abnormalities
+- fish/shrimp visible conditions
+- crop disease/pest identification
+
+If image quality is insufficient:
+
+say so.
+
+Do not fabricate confidence.
+
+============================================================
+22. AI FARM ADVISOR
+============================================================
+
+The Farm Advisor should analyze structured farm data.
+
+It should identify:
+
+- anomalies
+- trends
+- risks
+- operational inefficiencies
+- upcoming issues
+- opportunities
+
+Every major insight should attempt to explain:
+
+WHAT HAPPENED?
+WHY?
+IMPACT?
+RECOMMENDED ACTION?
+
+Initial deterministic/rule-based analytics are acceptable.
+
+LLM narrative should be layered on top later.
+
+Do not replace reliable calculations with an LLM.
+
+Use real database data.
+
+Never fabricate statistics.
+
+============================================================
+23. AI PROVIDER ARCHITECTURE
+============================================================
+
+AI must use a provider abstraction.
+
+The initial provider may be:
+
+Anthropic / Claude
+
+But the architecture should eventually support:
+
+Anthropic
+OpenAI
+Gemini
+Other providers
+
+Never hardcode a single provider throughout the application.
+
+API keys must:
+
+- live in environment variables
+- never be committed
+- never appear in frontend JavaScript
+- never be exposed through HTML
+
+============================================================
+24. AI USAGE TRACKING
+============================================================
+
+Track AI usage per organization/farm/user.
+
+Potential fields:
+
+organization_id
+farm_id
+user_id
+feature
+provider
+model
+request_time
+input_usage
+output_usage
+estimated_cost
+status
+
+This will eventually support:
+
+- AI limits
+- plan-based AI usage
+- cost monitoring
+- customer billing
+- abuse prevention
+
+Do not build AI billing yet.
+
+Prepare the architecture now.
+
+============================================================
+25. MILK PRODUCTION INTELLIGENCE
+============================================================
+
+For dairy farms:
+
+Track:
+
+- daily production
+- cow-level production
+- farm production
+- barn production
+- trends
+- comparisons
+
+Analytics:
+
+- milk per cow
+- daily average
+- weekly trend
+- monthly trend
+- production anomalies
+- underperforming animals
+
+Charts must answer real business questions.
+
+============================================================
+26. FEED MANAGEMENT
+============================================================
+
+Track:
+
+- feed types
+- schedules
+- consumption
+- cost
+- suppliers
+- stock
+- waste
+
+Analytics:
+
+- consumption
+- feed cost
+- cost per animal
+- feed efficiency
+- production relationship
+
+============================================================
+27. INVENTORY MANAGEMENT
+============================================================
+
+Track:
+
+- item
+- category
+- supplier
+- purchase
+- consumption
+- adjustment
+- waste
+- return
+- batch
+- expiry
+- minimum stock
+
+Statuses:
+
+LOW STOCK
+OUT OF STOCK
+EXPIRING
+EXPIRED
+
+Maintain complete transaction history.
+
+============================================================
+28. MEDICINE MANAGEMENT
+============================================================
+
+Track:
+
+- medicine
+- batch
+- supplier
+- quantity
+- expiry
+- usage
+- treatment relationship
+
+Medicine usage must update inventory.
+
+Prevent expired medicine from being accidentally selected.
+
+============================================================
+29. VACCINATION
+============================================================
+
+Track:
+
+- vaccine
+- animal
+- date
+- veterinarian
+- batch
+- next due date
+- status
+
+Generate:
+
+- upcoming reminders
+- overdue reminders
+- reports
+
+============================================================
+30. BREEDING
+============================================================
+
+Track:
+
+- heat
+- insemination
+- pregnancy
+- pregnancy check
+- expected birth
+- actual birth
+- abortion
+- reproductive history
+
+Generate intelligent reminders.
+
+============================================================
+31. ENVIRONMENT
+============================================================
+
+Support environmental monitoring.
+
+Possible metrics:
+
+- temperature
+- humidity
+- air quality
+- water quality
+- other farm-specific measurements
+
+Create configurable thresholds.
+
+Future architecture should support IoT.
+
+Do not fake live data.
+
+============================================================
+32. FINANCE
+============================================================
+
+Track:
+
+REVENUE
+
+- milk sales
+- animal sales
+- crop sales
+- egg sales
+- fish/shrimp sales
+- other income
+
+EXPENSES
+
+- feed
+- medicine
+- labor
+- utilities
+- maintenance
+- veterinary
+- transport
+- equipment
+- fertilizer
+- other
+
+Analytics:
+
+- revenue
+- expenses
+- profit
+- margin
+- cost per animal
+- cost per unit of production
+- input costs
+
+Finance must remain configurable by farm type.
+
+============================================================
+33. REPORTING
+============================================================
+
+Create professional reports.
+
+Core:
+
+- operational
+- financial
+- inventory
+- alerts
+- activity
+
+Livestock:
+
+- herd
+- health
+- breeding
+- vaccination
+- production
+
+Dairy:
+
+- milk
+- lactation
+
+Poultry:
+
+- flock
+- eggs
+- mortality
+
+Aquaculture:
+
+- pond
+- growth
+- water
+- harvest
+
+Crop:
+
+- fields
+- crops
+- yield
+- inputs
+- harvest
+
+Export:
+
+PDF
+Excel
+CSV
+Print
+
+Reports must look professionally designed.
+
+============================================================
+34. GLOBAL SEARCH
+============================================================
+
+Global search should eventually cover:
+
+animals
+flocks
+ponds
+fields
+crops
+health
+inventory
+medicine
+users
+reports
+suppliers
+transactions
+
+============================================================
+35. COMMAND PALETTE
+============================================================
+
+Future quick actions:
+
+Add Animal
+Add Flock
+Add Pond
+Add Field
+Record Production
+Record Health Event
+Add Inventory
+Create Expense
+Open AI Assistant
+Generate Report
+
+Support keyboard shortcuts.
+
+============================================================
+36. NOTIFICATIONS
+============================================================
+
+Notification categories:
+
+Health
+Production
+Inventory
+Vaccination
+Breeding
+Finance
+Environment
+AI
+Operations
+
+Notifications should support:
+
+- priority
+- read/unread
+- timestamps
+- related record
+- action
+- filtering
+
+Avoid duplicate alerts.
+
+============================================================
+37. RBAC
+============================================================
+
+Roles should eventually include:
+
+Super Admin
+Organization Owner
+Farm Manager
+Veterinarian
+Accountant
+Farm Staff
+Viewer
+
+Permissions must be enforced server-side.
+
+Frontend visibility is NOT security.
+
+============================================================
+38. AUDIT LOG
+============================================================
+
+Track:
+
+- user
+- organization
+- farm
+- action
+- timestamp
+- record
+- previous value
+- new value
+
+Tenant users must only access authorized logs.
+
+============================================================
+39. FILES / STORAGE
+============================================================
+
+Future tenant-aware structure:
+
+organization/{organization_id}/farm/{farm_id}/...
+
+Potential files:
+
+- animal photos
+- medical images
+- documents
+- reports
+- invoices
+- attachments
+
+Never expose another tenant's files.
+
+Validate uploads securely.
+
+============================================================
+40. SECURITY
+============================================================
+
+Perform professional security implementation/audit.
+
+Protect against:
+
+SQL Injection
+XSS
+CSRF
+IDOR
+Broken Access Control
+Privilege Escalation
+Session Attacks
+Brute Force
+Path Traversal
+Unsafe Uploads
+Sensitive Data Exposure
+Tenant Isolation Failure
+
+Use:
+
+prepared statements
+password hashing
+secure sessions
+CSRF protection
+server-side authorization
+input validation
+secure file handling
+audit logs
+
+============================================================
+41. DESIGN SYSTEM
+============================================================
+
+The frontend should NOT look like:
+
+- university software
+- generic Bootstrap
+- AdminLTE
+- generic Tailwind dashboard
+- random SaaS template
+
+Create an original DFMIS design system.
+
+Define:
+
+- typography
+- colors
+- semantic colors
+- spacing
+- radius
+- borders
+- shadows
+- elevation
+- components
+- states
+- animation tokens
+- responsive breakpoints
+
+Build reusable components.
+
+============================================================
+42. PREMIUM UI/UX STANDARD
+============================================================
+
+Target:
+
+$10,000–$50,000 software product quality.
+
+The interface should feel:
+
+- premium
+- intelligent
+- professional
+- calm
+- trustworthy
+- modern
+- data-driven
+
+Prioritize:
+
+- hierarchy
+- whitespace
+- typography
+- information density
+- clarity
+- usability
+
+Avoid:
+
+- excessive cards
+- excessive gradients
+- excessive glassmorphism
+- excessive shadows
+- unnecessary decoration
+- gimmicky animation
+
+============================================================
+43. MOTION DESIGN
+============================================================
+
+Motion is part of the product experience.
+
+Use motion for:
+
+- navigation
+- hierarchy
+- feedback
+- transitions
+- state changes
+- loading
+- data visualization
+
+Potential technologies:
+
+Rive
+Lottie
+Spline
+Shader/WebGL
+Icons8
+
+Use them selectively.
+
+Do not add heavy animation where it provides no value.
+
+Support:
+
+prefers-reduced-motion
+
+Provide fallbacks for unsupported devices.
+
+============================================================
+44. PERFORMANCE
+============================================================
+
+Optimize:
+
+database queries
+indexes
+N+1 queries
+assets
+images
+JavaScript
+charts
+API calls
+pagination
+lazy loading
+caching
+
+Animation and WebGL must not cause memory leaks.
+
+Do not sacrifice performance for visual effects.
+
+============================================================
+45. RESPONSIVE DESIGN
+============================================================
+
+Support:
+
+320px+
+375px
+390px
+430px
+768px
+1024px
+1280px
+1440px+
+
+Do not simply shrink desktop.
+
+Mobile should have intentionally redesigned hierarchy.
+
+No:
+
+horizontal overflow
+tiny controls
+broken tables
+broken charts
+cut-off dialogs
+
+============================================================
+46. ACCESSIBILITY
+============================================================
+
+Implement:
+
+semantic HTML
+keyboard navigation
+focus states
+ARIA where appropriate
+contrast
+reduced motion
+accessible forms
+screen-reader-friendly feedback
+
+============================================================
+47. LOADING / EMPTY / ERROR STATES
+============================================================
+
+Every major workflow needs:
+
+Loading
+Empty
+Error
+Success
+
+Do not leave blank screens.
+
+Create professional skeleton states and helpful messages.
+
+============================================================
+48. GLOBAL PRODUCT EXPERIENCE
+============================================================
+
+The product should feel coherent from:
+
+Login
+→ Onboarding
+→ Dashboard
+→ Module
+→ Detail
+→ Action
+→ Confirmation
+→ Notification
+→ Report
+
+No disconnected pages.
+
+============================================================
+49. FUTURE SAAS PLANS
+============================================================
+
+Do not hardcode pricing.
+
+Future architecture should support:
+
+Starter
+Professional
+Business
+Enterprise
+
+Possible limits:
+
+users
+farms
+animals
+flocks
+ponds
+fields
+storage
+AI requests
+AI usage
+reports
+API access
+advanced analytics
+automation
+
+============================================================
+50. PROFESSIONAL $200/MONTH TARGET
+============================================================
+
+The intended Professional plan is approximately:
+
+$200/month
+
+The value should come from:
+
+- complete farm management
+- multiple users
+- advanced analytics
+- AI Farm Advisor
+- AI health assistance
+- professional reports
+- intelligent alerts
+- inventory
+- finance
+- production analytics
+- role-based access
+- audit logs
+- automation foundation
+- priority support
+
+Do not claim guaranteed financial returns.
+
+The product should demonstrate measurable operational value.
+
+============================================================
+51. SaaS BILLING — FUTURE
+============================================================
+
+Eventually support:
+
+subscriptions
+plans
+monthly billing
+annual billing
+invoices
+payment provider
+usage limits
+feature flags
+trial periods
+cancellations
+renewals
+billing history
+
+Do NOT implement now unless specifically requested.
+
+Do not hardcode pricing into core business logic.
+
+============================================================
+52. PLATFORM ADMIN — FUTURE
+============================================================
+
+Future platform administrator should be able to manage:
+
+organizations
+farms
+users
+subscriptions
+plans
+usage
+AI costs
+system health
+support
+feature flags
+platform analytics
+
+This is separate from customer/farm administration.
+
+============================================================
+53. CUSTOMER ONBOARDING — FUTURE
+============================================================
+
+Eventually:
+
+Sign Up
+→ Create Organization
+→ Create Farm
+→ Select Farm Type
+→ Configure Farm
+→ Invite Users
+→ Choose Modules
+→ Start Using DFMIS
+
+Do not implement full onboarding yet unless required.
+
+============================================================
+54. API / INTEGRATIONS — FUTURE
+============================================================
+
+Prepare architecture for future integrations:
+
+IoT
+Sensors
+Accounting
+Payment
+Milk analyzers
+RFID
+Wearables
+Weather APIs
+Government/agricultural systems
+Third-party software
+
+Do not build fake integrations.
+
+============================================================
+55. DEVELOPMENT PHILOSOPHY
+============================================================
+
+DO NOT try to build everything at once.
+
+Use phases.
+
+PHASE 0
+Foundation
+
+- Git
+- environment configuration
+- database foundation
+- migrations
+- security foundation
+
+PHASE 1
+Core Platform
+
+- authentication
+- RBAC
+- tenant context
+- Command Center
+- core navigation
+- audit logging
+
+PHASE 2
+Premium UX/UI
+
+- design system
+- application shell
+- Cow/Livestock Profile
+- responsive experience
+- motion system
+
+PHASE 3
+Core Farm Modules
+
+- livestock
+- health
+- feed
+- inventory
+- medicine
+- vaccination
+- breeding
+- production
+- finance
+- environment
+
+PHASE 4
+Analytics & Reporting
+
+- advanced dashboards
+- data visualization
+- reports
+- exports
+- anomaly detection
+
+PHASE 5
+AI
+
+- AI provider abstraction
+- AI Farm Assistant
+- AI Farm Advisor
+- veterinary/animal health assistant
+- image analysis where appropriate
+- AI usage tracking
+
+PHASE 6
+Automation
+
+- smart alerts
+- reminders
+- workflows
+- notifications
+- scheduled reports
+
+PHASE 7
+Multi-Vertical Expansion
+
+- poultry
+- aquaculture
+- crop
+- greenhouse
+
+Only after the core architecture is proven.
+
+PHASE 8
+SaaS
+
+- organizations
+- tenant onboarding
+- farm switching
+- subscription plans
+- feature flags
+- usage limits
+
+PHASE 9
+Billing
+
+- payment integration
+- invoices
+- subscriptions
+- trials
+- renewals
+
+PHASE 10
+Production
+
+- security hardening
+- performance
+- monitoring
+- backups
+- disaster recovery
+- production deployment
+
+============================================================
+56. CURRENT DEVELOPMENT RULE
+============================================================
+
+The existing implementation is already underway.
+
+Do NOT restart the project.
+
+Do NOT unnecessarily rewrite completed work.
+
+Current progress includes:
+
+- Git initialized
+- environment configuration
+- tenant-ready schema foundation
+- farms table
+- farm_id relationships
+- health/reproductive/lactation status
+- alerts
+- audit logs
+- RBAC enforcement
+- Command Center dashboard
+- computed Farm Advisor statistics
+- role-aware quick actions
+- responsive validation
+- chart validation
+
+Preserve these improvements unless they conflict with this
+master specification.
+
+============================================================
+57. IMPORTANT CURRENT ARCHITECTURAL CORRECTION
+============================================================
+
+Before building many additional modules:
+
+Audit the current implementation against the future SaaS and
+multi-vertical architecture.
+
+Specifically review:
+
+- farm_id
+- organization/customer model
+- user relationships
+- tenant context
+- read queries
+- write queries
+- direct ID access
+- file storage
+- reports
+- audit logs
+- AI
+- permissions
+
+Do NOT allow unscoped reads to become long-term SaaS security debt.
+
+Classify:
+
+SAFE
+FARM-SCOPED
+ORGANIZATION-SCOPED
+SYSTEM-WIDE
+
+Fix security-critical isolation now.
+
+Do not unnecessarily rewrite every module.
+
+============================================================
+58. CURRENT FIRST VERTICAL
+============================================================
+
+The first specialized experience remains:
+
+DAIRY / LIVESTOCK.
+
+Therefore, it is appropriate for the next major experience to
+be the Cow/Livestock Profile.
+
+However:
+
+The surrounding platform must remain generic.
+
+Do not introduce unnecessary cow-specific assumptions into:
+
+authentication
+organizations
+farms
+users
+permissions
+inventory
+finance
+reports
+notifications
+AI infrastructure
+audit logging
+tenant context
+
+============================================================
+59. PRODUCT QUALITY BAR
+============================================================
+
+Every major page must pass:
+
+FUNCTIONAL
+UX
+UI
+RESPONSIVE
+ACCESSIBILITY
+SECURITY
+PERFORMANCE
+
+review.
+
+Do not stop at:
+
+"It works."
+
+The standard is:
+
+"It feels like a serious commercial product."
+
+============================================================
+60. 10-SECOND TEST
+============================================================
+
+A first-time farm manager should understand the most important
+farm conditions within approximately 10 seconds.
+
+Dashboard:
+
+- What is happening?
+- What is wrong?
+- What changed?
+- What needs attention?
+- What should I do?
+
+Cow/Livestock Profile:
+
+- Who is this animal?
+- Is it healthy?
+- What happened recently?
+- What requires attention?
+
+Future poultry/aquaculture/crop dashboards should follow the same
+principle.
+
+============================================================
+61. FINAL PRODUCT VISION
+============================================================
+
+The final DFMIS platform should make:
+
+FARM OWNERS think:
+
+"I can understand my operation from one place."
+
+FARM MANAGERS think:
+
+"This saves me time."
+
+VETERINARIANS think:
+
+"I have a much better view of animal health."
+
+STAFF think:
+
+"This is easy to use."
+
+BUSINESS OWNERS think:
+
+"This gives me useful operational intelligence."
+
+SAAS CUSTOMERS think:
+
+"This is worth paying for every month."
+
+The final platform should combine:
+
+FARM MANAGEMENT
++
+DATA
++
+ANALYTICS
++
+AI
++
+AUTOMATION
++
+SECURITY
++
+SCALABILITY
++
+PREMIUM UX
+
+============================================================
+62. MOST IMPORTANT ARCHITECTURAL PRINCIPLE
+============================================================
+
+Build:
+
+CORE FARM PLATFORM
++
+FARM-TYPE MODULES
++
+FARM-TYPE-AWARE AI
++
+MULTI-TENANT FOUNDATION
+
+NOT:
+
+A cow application that later tries to become a farm platform.
+
+============================================================
+63. CLAUDE CODE OPERATING INSTRUCTIONS
+============================================================
+
+You are responsible for making professional engineering and
+product decisions.
+
+Do not ask me about trivial implementation decisions.
+
+Use your judgment.
+
+However, if you need:
+
+- MCP
+- Claude Code skill
+- browser automation
+- Figma
+- design system
+- animation library
+- external API
+- AI provider
+- image generation
+- database tool
+- testing tool
+- deployment service
+- payment provider
+
+and it is not currently available:
+
+STOP AND ASK ME.
+
+Explain:
+
+1. What you need
+2. Why it is needed
+3. What it improves
+4. Whether it is required or optional
+
+Do not silently create an inferior workaround.
+
+Use available skills and MCPs proactively.
+
+============================================================
+64. IMPLEMENTATION RULE
+============================================================
+
+Before every major phase:
+
+AUDIT
+→ PLAN
+→ IMPLEMENT
+→ TEST
+→ VISUAL QA
+→ SECURITY QA
+→ PERFORMANCE QA
+→ ITERATE
+
+Do not implement dozens of unrelated features in one uncontrolled
+change.
+
+Build one excellent reference experience first.
+
+Then propagate the design system.
+
+============================================================
+65. FINAL INSTRUCTION
+============================================================
+
+Now treat this document as the MASTER PRODUCT SPECIFICATION for
+DFMIS.
+
+DO NOT restart the project.
+
+DO NOT delete existing working functionality.
+
+DO NOT blindly rewrite the application.
+
+First compare the current implementation against this specification.
+
+Give me a concise:
+
+MASTER GAP ANALYSIS
+
+containing:
+
+1. What already satisfies the specification
+2. What partially satisfies it
+3. What conflicts with the new architecture
+4. What must be fixed immediately
+5. What can wait
+6. What should NOT be built yet
+7. Recommended next implementation phase
+
+Then make only the necessary foundational corrections.
+
+After the architecture is confirmed, continue with the current
+planned implementation.
+
+The immediate priority remains:
+
+PREMIUM LIVESTOCK/COW PROFILE
+
+while ensuring the surrounding platform is capable of becoming:
+
+A MULTI-TENANT, MULTI-FARM, MULTI-VERTICAL,
+AI-POWERED FARM INTELLIGENCE SAAS PLATFORM.
+
+This is the long-term product direction.

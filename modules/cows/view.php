@@ -2,7 +2,10 @@
 require_once '../../includes/auth.php';
 require_once '../../config/database.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/repository.php';
 requireLogin();
+requirePermission('cows.view');
 
 $cow_id = isset($_GET['id']) ? $_GET['id'] : null;
 $error_message = '';
@@ -18,19 +21,15 @@ if (!$cow_id) {
 try {
     $conn = getDBConnection();
 
-    $stmt = $conn->prepare("SELECT * FROM cows WHERE cow_id = ?");
-    $stmt->execute([$cow_id]);
-    $cow = $stmt->fetch(PDO::FETCH_ASSOC);
+    // 404s if the cow belongs to another tenant — indistinguishable from
+    // "does not exist", so this cannot be used to probe other farms.
+    $cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow_id, 'deleted_at IS NULL');
 
-    if (!$cow) {
-        $_SESSION['error_message'] = "Cow not found.";
-        header('Location: ' . BASE_URL . 'modules/cows/');
-        exit();
-    }
-
-    $stmt = $conn->prepare("SELECT * FROM health_events WHERE cow_id = ? ORDER BY event_date DESC");
-    $stmt->execute([$cow_id]);
-    $healthEvents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $healthEvents = tenantQuery(
+        $conn,
+        "SELECT * FROM health_events WHERE {scope} AND cow_id = ? ORDER BY event_date DESC",
+        [$cow['cow_id']]
+    );
 } catch (PDOException $e) {
     $error_message = safeError($e, "Database error");
 }

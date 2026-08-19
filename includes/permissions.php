@@ -1,38 +1,56 @@
 <?php
-// Centralized role-based permission matrix. One place to check "can this
-// role do X" instead of scattering ad-hoc role checks across modules.
-// auth.php (requireRole, currentRole) must already be loaded.
+// ============================================================================
+// RBAC — permissions are checked against the user's role ON THE ACTIVE FARM
+// (farm_users.role), not a global role on the user row. The same person can
+// be a veterinarian at one farm and a viewer at another.
+//
+// Platform admins bypass these checks; they operate above the tenant layer.
+// ============================================================================
+
+require_once __DIR__ . '/tenant.php';
 
 const DFMS_PERMISSIONS = [
-    'cows.create'     => ['admin', 'staff'],
-    'cows.edit'       => ['admin', 'staff'],
-    'cows.delete'     => ['admin'],
+    'cows.view'        => ['farm_manager', 'veterinarian', 'staff', 'accountant', 'viewer'],
+    'cows.create'      => ['farm_manager', 'staff'],
+    'cows.edit'        => ['farm_manager', 'staff'],
+    'cows.delete'      => ['farm_manager'],
 
-    'health.create'   => ['admin', 'veterinarian'],
+    'health.view'      => ['farm_manager', 'veterinarian', 'staff', 'viewer'],
+    'health.create'    => ['farm_manager', 'veterinarian'],
 
-    'feeding.create'  => ['admin', 'staff'],
+    'feeding.view'     => ['farm_manager', 'veterinarian', 'staff', 'viewer'],
+    'feeding.create'   => ['farm_manager', 'staff'],
 
-    'milk.create'     => ['admin', 'staff'],
-    'milk.edit'       => ['admin', 'staff'],
+    'milk.view'        => ['farm_manager', 'veterinarian', 'staff', 'accountant', 'viewer'],
+    'milk.create'      => ['farm_manager', 'staff'],
+    'milk.edit'        => ['farm_manager', 'staff'],
 
-    'inventory.create' => ['admin', 'staff'],
-    'inventory.update' => ['admin', 'staff'],
+    'inventory.view'   => ['farm_manager', 'veterinarian', 'staff', 'accountant', 'viewer'],
+    'inventory.create' => ['farm_manager', 'staff'],
+    'inventory.update' => ['farm_manager', 'staff'],
 
-    'alerts.create'   => ['admin', 'veterinarian', 'staff'],
-    'alerts.edit'     => ['admin', 'veterinarian'],
-    'alerts.delete'   => ['admin'],
+    'alerts.view'      => ['farm_manager', 'veterinarian', 'staff', 'accountant', 'viewer'],
+    'alerts.create'    => ['farm_manager', 'veterinarian', 'staff'],
+    'alerts.edit'      => ['farm_manager', 'veterinarian'],
+    'alerts.delete'    => ['farm_manager'],
+
+    'audit.view'       => ['farm_manager'],
 ];
 
-// Call at the top of a module/action, after requireLogin(). Exits with 403
-// if the current role lacks the permission.
-function requirePermission($permission) {
+// Non-exiting check, for conditionally rendering UI. Never a substitute for
+// requirePermission() on the action itself.
+function hasPermission($permission) {
+    if (isPlatformAdmin()) {
+        return true;
+    }
     $allowed = DFMS_PERMISSIONS[$permission] ?? [];
-    requireRole($allowed);
+    return in_array(currentFarmRole(), $allowed, true);
 }
 
-// Non-exiting check, for conditionally showing UI (e.g. hiding an "Add"
-// button). Never a substitute for requirePermission() on the action itself.
-function hasPermission($permission) {
-    $allowed = DFMS_PERMISSIONS[$permission] ?? [];
-    return in_array(currentRole(), $allowed, true);
+// Hard gate. Call at the top of every action, after requireLogin().
+function requirePermission($permission) {
+    if (!hasPermission($permission)) {
+        http_response_code(403);
+        exit('You do not have permission to perform this action.');
+    }
 }

@@ -3,7 +3,7 @@ require_once '../../includes/auth.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
-require_once '../../includes/tenant.php';
+require_once '../../includes/repository.php';
 requireLogin();
 requirePermission('milk.create');
 

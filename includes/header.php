@@ -1,6 +1,18 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/tenant.php';
+require_once __DIR__ . '/permissions.php';
+
+// Farm shown in the top bar. With one farm today this is a label; once a
+// user belongs to several it becomes the farm switcher's current value.
+$dfms_farm_name = '';
+if (isLoggedIn() && currentFarmId() !== null) {
+    $stmt = getDBConnection()->prepare("SELECT name FROM farms WHERE farm_id = ?");
+    $stmt->execute([currentFarmId()]);
+    $dfms_farm_name = (string) $stmt->fetchColumn();
+}
+$dfms_role_label = ucwords(str_replace('_', ' ', (string) currentFarmRole()));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -46,7 +58,7 @@ require_once __DIR__ . '/../config/database.php';
     ?>
     <div class="dfms-shell">
         <aside class="dfms-sidebar">
-            <div class="dfms-sidebar-brand">Green Valley Dairy Farm</div>
+            <div class="dfms-sidebar-brand"><?php echo htmlspecialchars($dfms_farm_name); ?></div>
             <nav class="dfms-nav">
                 <?php foreach ($primary_nav as $url => $label): ?>
                     <a href="<?php echo BASE_URL . $url; ?>" class="<?php echo dfms_is_active($current_page, $url) ? 'active' : ''; ?>"><?php echo htmlspecialchars($label); ?></a>
@@ -65,14 +77,14 @@ require_once __DIR__ . '/../config/database.php';
             <header class="dfms-topbar">
                 <div></div>
                 <div class="dfms-topbar-user">
-                    <span>Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?> (<?php echo htmlspecialchars(currentRole()); ?>)</span>
+                    <span><?php echo htmlspecialchars($dfms_farm_name); ?> · <?php echo htmlspecialchars($_SESSION['username']); ?> (<?php echo htmlspecialchars($dfms_role_label); ?>)</span>
                     <a href="<?php echo BASE_URL; ?>logout.php" class="dfms-btn dfms-btn-secondary">Logout</a>
                 </div>
             </header>
 
             <div class="dfms-mobile-topbar">
                 <button type="button" data-drawer-open aria-label="Open menu">&#9776;</button>
-                <strong>Green Valley Dairy Farm</strong>
+                <strong><?php echo htmlspecialchars($dfms_farm_name); ?></strong>
                 <a href="<?php echo BASE_URL; ?>modules/alerts/" aria-label="Alerts" style="color:#fff;">&#128276;</a>
             </div>
 

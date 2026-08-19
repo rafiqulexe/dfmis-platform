@@ -1,0 +1,3 @@
+# Defence in depth: this directory must never be web-served. Files are
+# delivered only through a PHP handler that re-checks tenant ownership.
+Require all denied

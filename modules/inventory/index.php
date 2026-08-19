@@ -1,16 +1,19 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/repository.php';
 requireLogin();
+requirePermission('inventory.view');
 
 try {
     $conn = getDBConnection();
-    $stmt = $conn->query("
-        SELECT i.*, l.quantity 
-        FROM inventory_items i 
-        LEFT JOIN inventory_levels l ON i.item_id = l.item_id 
+    $items = tenantQuery($conn, "
+        SELECT i.*, l.quantity, l.inventory_id
+        FROM inventory_items i
+        LEFT JOIN inventory_levels l ON i.item_id = l.item_id
+        WHERE {scope}
         ORDER BY i.item_name
-    ");
-    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    ", [], 'i');
 } catch (PDOException $e) {
     $items = [];
 }
@@ -25,11 +28,13 @@ require_once '../../includes/header.php';
                 <h1 class="text-2xl font-semibold text-gray-900">Inventory</h1>
                 <p class="mt-2 text-sm text-gray-700">Current inventory levels</p>
             </div>
-            <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-                <a href="add.php" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
-                    Add Item
-                </a>
-            </div>
+            <?php if (hasPermission('inventory.create')): ?>
+                <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+                    <a href="add.php" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
+                        Add Item
+                    </a>
+                </div>
+            <?php endif; ?>
         </div>
 
         <!-- Inventory List -->
@@ -65,7 +70,9 @@ require_once '../../includes/header.php';
                                         <?php echo htmlspecialchars($item['unit']); ?>
                                     </td>
                                     <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                                        <a href="update.php?id=<?php echo $item['item_id']; ?>" class="text-blue-600 hover:text-blue-900">Update Stock</a>
+                                        <?php if (hasPermission('inventory.update') && $item['inventory_id']): ?>
+                                            <a href="update.php?id=<?php echo $item['inventory_id']; ?>" class="text-blue-600 hover:text-blue-900">Update Stock</a>
+                                        <?php endif; ?>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>

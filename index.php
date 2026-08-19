@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Green Valley Dairy Farm - Login</title>
+    <title>DFMS — Sign in</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Inter:wght@400;500;600&family=Fraunces:ital,wght@0,500;1,400&display=swap" rel="stylesheet">
@@ -247,8 +247,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </svg>
 
             <div class="login-brand-copy">
-                <p class="login-eyebrow login-reveal">Est. for the morning shift</p>
-                <h1 class="login-reveal">Green Valley Dairy Farm</h1>
+                <p class="login-eyebrow login-reveal">Dairy Farm Intelligence Platform</p>
+                <h1 class="login-reveal">DFMS</h1>
                 <p class="login-desc login-reveal">Every cow, every liter, every vaccination — tracked from first light in the shed to the ledger on your desk.</p>
             </div>
         </div>

@@ -2,15 +2,17 @@
 require_once '../../includes/auth.php';
 require_once '../../config/database.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/repository.php';
 requireLogin();
+requirePermission('alerts.view');
 
 $error_message = '';
 $alerts = [];
 
 try {
     $conn = getDBConnection();
-    $stmt = $conn->query("SELECT * FROM alerts ORDER BY alert_time DESC");
-    $alerts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $alerts = tenantQuery($conn, "SELECT * FROM alerts WHERE {scope} ORDER BY alert_time DESC");
 } catch (PDOException $e) {
     $error_message = safeError($e, "Database error");
 }
@@ -25,11 +27,13 @@ require_once '../../includes/header.php';
                 <h1 class="text-2xl font-semibold text-gray-900">Alerts</h1>
                 <p class="mt-2 text-sm text-gray-700">A list of all alerts in the system</p>
             </div>
-            <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-                <a href="create.php" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:w-auto">
-                    Add Alert
-                </a>
-            </div>
+            <?php if (hasPermission('alerts.create')): ?>
+                <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+                    <a href="create.php" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:w-auto">
+                        Add Alert
+                    </a>
+                </div>
+            <?php endif; ?>
         </div>
 
         <?php if ($error_message): ?>
@@ -69,8 +73,12 @@ require_once '../../includes/header.php';
                                             <?php echo htmlspecialchars($alert['description']); ?>
                                         </td>
                                         <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                                            <a href="edit.php?id=<?php echo $alert['alert_id']; ?>" class="text-blue-600 hover:text-blue-900">Edit</a>
-                                            <a href="delete.php?id=<?php echo $alert['alert_id']; ?>" class="ml-4 text-red-600 hover:text-red-900" onclick="return confirm('Are you sure you want to delete this alert?')">Delete</a>
+                                            <?php if (hasPermission('alerts.edit')): ?>
+                                                <a href="edit.php?id=<?php echo $alert['alert_id']; ?>" class="text-blue-600 hover:text-blue-900">Edit</a>
+                                            <?php endif; ?>
+                                            <?php if (hasPermission('alerts.delete')): ?>
+                                                <a href="delete.php?id=<?php echo $alert['alert_id']; ?>" class="ml-4 text-red-600 hover:text-red-900" onclick="return confirm('Are you sure you want to delete this alert?')">Delete</a>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

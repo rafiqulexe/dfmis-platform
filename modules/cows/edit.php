@@ -4,31 +4,25 @@ require_once '../../config/database.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
+require_once '../../includes/repository.php';
 requireLogin();
 requirePermission('cows.edit');
 
 $cow_id = isset($_GET['id']) ? $_GET['id'] : null;
 $error_message = '';
 $success_message = '';
+$cow = null;
 
-// Fetch cow details if ID is provided
+$conn = getDBConnection();
+
+// 404s for another tenant's cow, so an id from the URL can never be edited
+// across a farm boundary.
 if ($cow_id) {
-    try {
-        $conn = getDBConnection();
-        $stmt = $conn->prepare("SELECT * FROM cows WHERE cow_id = ?");
-        $stmt->execute([$cow_id]);
-        $cow = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$cow) {
-            $error_message = "Cow not found";
-        }
-    } catch (PDOException $e) {
-        $error_message = safeError($e, "Database error");
-    }
+    $cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow_id, 'deleted_at IS NULL');
 }
 
 // Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($cow && $_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
     $unique_id = $_POST['unique_id'] ?? '';
@@ -36,10 +30,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $notes = $_POST['notes'] ?? '';
 
     try {
-        $conn = getDBConnection();
-        $stmt = $conn->prepare("UPDATE cows SET unique_id = ?, date_of_birth = ?, notes = ? WHERE cow_id = ?");
-        $stmt->execute([$unique_id, $dob, $notes, $cow_id]);
+        tenantExec(
+            $conn,
+            "UPDATE cows SET unique_id = ?, date_of_birth = ?, notes = ? WHERE cow_id = ? AND {scope}",
+            [$unique_id, $dob, $notes, $cow['cow_id']]
+        );
         $success_message = "Cow details updated successfully";
+        $cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow['cow_id'], 'deleted_at IS NULL');
     } catch (PDOException $e) {
         $error_message = safeError($e, "Update failed");
     }

@@ -4,6 +4,7 @@ require_once '../../config/database.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
+require_once '../../includes/repository.php';
 requireLogin();
 requirePermission('cows.delete');
 
@@ -16,46 +17,26 @@ if (!$cow_id) {
     exit();
 }
 
-// Check if the cow exists before deletion
-try {
-    $conn = getDBConnection();
-    $stmt = $conn->prepare("SELECT unique_id FROM cows WHERE cow_id = ?");
-    $stmt->execute([$cow_id]);
-    $cow = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$cow) {
-        $_SESSION['error_message'] = "Cow not found.";
-        header('Location: ' . BASE_URL . 'modules/cows/');
-        exit();
-    }
-} catch (PDOException $e) {
-    $_SESSION['error_message'] = safeError($e, "Database error");
-    header('Location: ' . BASE_URL . 'modules/cows/');
-    exit();
-}
+$conn = getDBConnection();
+$cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow_id, 'deleted_at IS NULL');
 
 // Handle the deletion
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
     try {
-        $conn->beginTransaction();
+        // Soft delete: the animal's health history stays intact and the
+        // record remains auditable, which a hard DELETE would destroy.
+        tenantExec(
+            $conn,
+            "UPDATE cows SET deleted_at = NOW() WHERE cow_id = ? AND {scope}",
+            [$cow['cow_id']]
+        );
 
-        // First delete related health events
-        $stmt = $conn->prepare("DELETE FROM health_events WHERE cow_id = ?");
-        $stmt->execute([$cow_id]);
-
-        // Then delete the cow
-        $stmt = $conn->prepare("DELETE FROM cows WHERE cow_id = ?");
-        $stmt->execute([$cow_id]);
-
-        $conn->commit();
-
-        $_SESSION['success_message'] = "Cow and related records deleted successfully.";
+        $_SESSION['success_message'] = "Cow archived successfully.";
         header('Location: ' . BASE_URL . 'modules/cows/');
         exit();
     } catch (PDOException $e) {
-        $conn->rollBack();
         $error_message = safeError($e, "Deletion failed");
     }
 }
@@ -89,10 +70,11 @@ require_once '../../includes/header.php';
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
                           d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                <h3 class="mt-2 text-lg font-medium text-gray-900">Confirm Deletion</h3>
+                <h3 class="mt-2 text-lg font-medium text-gray-900">Archive this cow?</h3>
                 <p class="mt-1 text-sm text-gray-500">
-                    Are you sure you want to delete cow #<?php echo htmlspecialchars($cow['unique_id']); ?>? 
-                    This will also delete all related health records. This action cannot be undone.
+                    <?php echo htmlspecialchars($cow['name'] ? $cow['name'] . ' (' . $cow['unique_id'] . ')' : $cow['unique_id']); ?>
+                    will be removed from the active herd. Its health history is retained for
+                    your records and the animal can be restored by an administrator.
                 </p>
             </div>
             <div class="mt-6 flex justify-center space-x-4">
@@ -100,7 +82,7 @@ require_once '../../includes/header.php';
                     <?php csrf_field(); ?>
                     <button type="submit"
                             class="inline-flex justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                        Delete Cow
+                        Archive Cow
                     </button>
                 </form>
                 <a href="<?php echo BASE_URL; ?>modules/cows/" 

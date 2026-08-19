@@ -3,18 +3,17 @@ require_once '../../includes/auth.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
-require_once '../../includes/tenant.php';
+require_once '../../includes/repository.php';
 requireLogin();
 requirePermission('health.create');
 
 $error = '';
 $success = '';
 
-// Get list of cows for dropdown
+// Dropdown lists only this farm's cows.
 try {
     $conn = getDBConnection();
-    $stmt = $conn->query("SELECT cow_id, unique_id FROM cows ORDER BY unique_id");
-    $cows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $cows = tenantQuery($conn, "SELECT cow_id, unique_id, name FROM cows WHERE {scope} AND deleted_at IS NULL ORDER BY unique_id");
 } catch (PDOException $e) {
     $cows = [];
 }
@@ -31,12 +30,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($cow_id) || empty($event_date) || empty($event_type)) {
         $error = 'Please fill in all required fields';
     } else {
-        try {
-            $stmt = $conn->prepare("INSERT INTO health_events (cow_id, event_date, event_type, severity, description, farm_id, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$cow_id, $event_date, $event_type, $severity, $description, currentFarmId(), $_SESSION['admin_id']]);
-            $success = 'Health event added successfully';
-        } catch (PDOException $e) {
-            $error = safeError($e, 'Error adding health event');
+        // Never trust the submitted cow_id — a POST can name any id, so
+        // confirm it belongs to this farm before writing a row against it.
+        $targetCow = tenantFind($conn, 'cows', 'cow_id', $cow_id, 'deleted_at IS NULL');
+        if ($targetCow === null) {
+            $error = 'Please select a valid cow.';
+        } else {
+            try {
+                $stmt = $conn->prepare("INSERT INTO health_events (cow_id, event_date, event_type, severity, description, farm_id, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$targetCow['cow_id'], $event_date, $event_type, $severity, $description, currentFarmId(), currentUserId()]);
+                $success = 'Health event added successfully';
+            } catch (PDOException $e) {
+                $error = safeError($e, 'Error adding health event');
+            }
         }
     }
 }

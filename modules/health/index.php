@@ -1,20 +1,23 @@
 <?php
 require_once '../../includes/auth.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/repository.php';
 requireLogin();
+requirePermission('health.view');
 
 $error_message = '';
 $events = [];
 
 try {
     $conn = getDBConnection();
-    $stmt = $conn->query("
-        SELECT h.*, c.unique_id
+    $events = tenantQuery($conn, "
+        SELECT h.*, c.unique_id, c.name
         FROM health_events h
         JOIN cows c ON h.cow_id = c.cow_id
+        WHERE {scope}
         ORDER BY h.event_date DESC
-    ");
-    $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    ", [], 'h');
 } catch (PDOException $e) {
     $error_message = safeError($e, "Database error");
 }
@@ -29,11 +32,13 @@ require_once '../../includes/header.php';
                 <h1 class="text-2xl font-semibold text-gray-900">Health Events</h1>
                 <p class="mt-2 text-sm text-gray-700">A list of all recorded health events</p>
             </div>
-            <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-                <a href="add.php" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
-                    Add Health Event
-                </a>
-            </div>
+            <?php if (hasPermission('health.create')): ?>
+                <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+                    <a href="add.php" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
+                        Add Health Event
+                    </a>
+                </div>
+            <?php endif; ?>
         </div>
 
         <?php if ($error_message): ?>

@@ -4,33 +4,23 @@ require_once '../../config/database.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
+require_once '../../includes/repository.php';
 requireLogin();
 requirePermission('milk.edit');
 
 $production_id = isset($_GET['id']) ? $_GET['id'] : null;
 $error_message = '';
 $success_message = '';
+$production = null;
 
-// Fetch milk production details if ID is provided
+$conn = getDBConnection();
+
 if ($production_id) {
-    try {
-        $conn = getDBConnection();
-        $stmt = $conn->prepare("SELECT * FROM milk_production WHERE production_id = ?");
-        $stmt->execute([$production_id]);
-        $production = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$production) {
-            $_SESSION['error_message'] = "Production record not found";
-            header('Location: ' . BASE_URL . 'modules/milk/');
-            exit();
-        }
-    } catch (PDOException $e) {
-        $error_message = safeError($e, "Database error");
-    }
+    $production = tenantFindOr404($conn, 'milk_production', 'production_id', $production_id);
 }
 
 // Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($production && $_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
     $production_date = $_POST['production_date'] ?? '';
@@ -43,21 +33,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error_message = "Invalid milk yield value.";
     } else {
         try {
-            $conn = getDBConnection();
-            
-            // Check if another record exists for the same date (excluding current record)
-            $stmt = $conn->prepare("SELECT production_id FROM milk_production 
-                                  WHERE production_date = ? AND production_id != ?");
-            $stmt->execute([$production_date, $production_id]);
-            
-            if ($stmt->fetch()) {
+            // Uniqueness is per farm — two farms may each log the same date.
+            $clash = tenantQuery(
+                $conn,
+                "SELECT production_id FROM milk_production WHERE {scope} AND production_date = ? AND production_id != ?",
+                [$production_date, $production['production_id']]
+            );
+
+            if ($clash) {
                 $error_message = "A production record already exists for this date.";
             } else {
-                // Update the record
-                $stmt = $conn->prepare("UPDATE milk_production
-                                      SET production_date = ?, total_milk_yield = ?
-                                      WHERE production_id = ?");
-                $stmt->execute([$production_date, $total_milk_yield, $production_id]);
+                tenantExec(
+                    $conn,
+                    "UPDATE milk_production SET production_date = ?, total_milk_yield = ? WHERE production_id = ? AND {scope}",
+                    [$production_date, $total_milk_yield, $production['production_id']]
+                );
 
                 $_SESSION['success_message'] = "Milk production record updated successfully";
                 header('Location: ' . BASE_URL . 'modules/milk/');

@@ -1,0 +1,5 @@
+# Tenant-uploaded files are never committed — but the .htaccess deny rule is
+# a security control and must ship with the repo.
+*
+!.gitignore
+!.htaccess

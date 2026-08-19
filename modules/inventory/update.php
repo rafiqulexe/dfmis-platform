@@ -4,7 +4,7 @@ require_once '../../config/database.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
-require_once '../../includes/tenant.php';
+require_once '../../includes/repository.php';
 requireLogin();
 requirePermission('inventory.update');
 
@@ -19,26 +19,21 @@ if (!$inventory_id) {
     exit();
 }
 
-// Fetch inventory details
-try {
-    $conn = getDBConnection();
-    $stmt = $conn->prepare("
-        SELECT i.*, ii.item_name, ii.item_type, ii.unit
-        FROM inventory_levels i
-        JOIN inventory_items ii ON i.item_id = ii.item_id
-        WHERE i.inventory_id = ?
-    ");
-    $stmt->execute([$inventory_id]);
-    $inventory = $stmt->fetch(PDO::FETCH_ASSOC);
+$conn = getDBConnection();
 
-    if (!$inventory) {
-        $_SESSION['error_message'] = "Inventory record not found";
-        header('Location: ' . BASE_URL . 'modules/inventory/');
-        exit();
-    }
-} catch (PDOException $e) {
-    $error_message = safeError($e, "Database error");
+// Scoped lookup first, then join for the display fields.
+$inventory = tenantFindOr404($conn, 'inventory_levels', 'inventory_id', $inventory_id);
+$detail = tenantQuery(
+    $conn,
+    "SELECT ii.item_name, ii.item_type, ii.unit FROM inventory_items ii WHERE {scope} AND ii.item_id = ?",
+    [$inventory['item_id']],
+    'ii'
+);
+if (empty($detail)) {
+    http_response_code(404);
+    exit('Not found.');
 }
+$inventory = array_merge($inventory, $detail[0]);
 
 // Handle form submission
 if ($inventory && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -49,14 +44,13 @@ if ($inventory && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $adjustment_amount = $_POST['adjustment_amount'] ?? '';
 
     try {
-        $conn = getDBConnection();
         $conn->beginTransaction();
 
         // Get current quantity
-        $stmt = $conn->prepare("SELECT quantity FROM inventory_levels WHERE inventory_id = ? FOR UPDATE");
-        $stmt->execute([$inventory_id]);
+        $stmt = $conn->prepare("SELECT quantity FROM inventory_levels WHERE inventory_id = ? AND farm_id = ? FOR UPDATE");
+        $stmt->execute([$inventory['inventory_id'], currentFarmId()]);
         $current = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if ($adjustment_type === 'set') {
             // Directly set new quantity
             $new_quantity = floatval($new_quantity);
@@ -77,8 +71,11 @@ if ($inventory && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Update inventory level
-        $stmt = $conn->prepare("UPDATE inventory_levels SET quantity = ? WHERE inventory_id = ?");
-        $stmt->execute([$final_quantity, $inventory_id]);
+        tenantExec(
+            $conn,
+            "UPDATE inventory_levels SET quantity = ? WHERE inventory_id = ? AND {scope}",
+            [$final_quantity, $inventory['inventory_id']]
+        );
 
         // Check if stock is low and create alert if necessary
         if ($final_quantity <= 10) { // You can adjust this threshold

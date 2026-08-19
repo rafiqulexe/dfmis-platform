@@ -23,13 +23,41 @@ $cows = [
     'BD005'  => ['name' => 'Runi',  'breed' => 'North Bengal Grey',   'health' => 'healthy', 'repro' => 'pregnant', 'lactation' => 'lactating'],
 ];
 
-$stmt = $conn->prepare(
-    "UPDATE cows SET name = ?, breed = ?, health_status = ?, reproductive_status = ?, lactation_status = ? WHERE unique_id = ?"
+// Upsert so the demo herd is restored even if rows were removed while
+// exploring the app.
+$update = $conn->prepare(
+    "UPDATE cows SET name = ?, breed = ?, health_status = ?, reproductive_status = ?, lactation_status = ?, deleted_at = NULL WHERE unique_id = ?"
+);
+$insert = $conn->prepare(
+    "INSERT INTO cows (farm_id, unique_id, name, breed, health_status, reproductive_status, lactation_status, date_of_birth, notes)
+     VALUES (1, ?, ?, ?, ?, ?, ?, '2021-06-01', 'Demo herd record')"
 );
 foreach ($cows as $uniqueId => $c) {
-    $stmt->execute([$c['name'], $c['breed'], $c['health'], $c['repro'], $c['lactation'], $uniqueId]);
+    $update->execute([$c['name'], $c['breed'], $c['health'], $c['repro'], $c['lactation'], $uniqueId]);
+    if ($update->rowCount() === 0) {
+        $exists = $conn->prepare("SELECT 1 FROM cows WHERE unique_id = ?");
+        $exists->execute([$uniqueId]);
+        if (!$exists->fetchColumn()) {
+            $insert->execute([$uniqueId, $c['name'], $c['breed'], $c['health'], $c['repro'], $c['lactation']]);
+        }
+    }
 }
-echo "Updated " . count($cows) . " cow profiles.\n";
+echo "Ensured " . count($cows) . " cow profiles.\n";
+
+// ---- Second farm, used only by tests/tenant_isolation_test.sh ----
+// Kept reproducible here so the isolation suite never depends on
+// hand-created database state.
+$conn->exec("INSERT INTO organizations (organization_id, name, plan, status)
+             SELECT 2, 'Rival Holdings (test fixture)', 'starter', 'active'
+             WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE organization_id = 2)");
+$conn->exec("INSERT INTO farms (farm_id, organization_id, name)
+             SELECT 2, 2, 'Rival Farm (isolation test)'
+             WHERE NOT EXISTS (SELECT 1 FROM farms WHERE farm_id = 2)");
+$conn->exec("INSERT INTO cows (farm_id, unique_id, name, breed, date_of_birth, notes)
+             SELECT 2, 'RIVAL001', 'Should Be Invisible', 'Test', '2022-01-01',
+                    'Belongs to farm 2 - must never be visible to farm 1 users'
+             WHERE NOT EXISTS (SELECT 1 FROM cows WHERE unique_id = 'RIVAL001')");
+echo "Ensured cross-tenant test fixture (farm 2).\n";
 
 // ---- Milk production: last 30 days, with a real dip in the last 7 ----
 $conn->exec("DELETE FROM milk_production WHERE farm_id = 1");
@@ -67,9 +95,22 @@ foreach (['08:00:00', '14:00:00', '20:00:00'] as $time) {
 }
 echo "Seeded 7 days of temperature readings.\n";
 
-// ---- Health events: shift to recent dates, keep severities already set ----
-$conn->exec("UPDATE health_events SET event_date = DATE_SUB(CURDATE(), INTERVAL FLOOR(1 + RAND() * 12) DAY) WHERE cow_id IN (1,2,3,4)");
-echo "Refreshed health event dates.\n";
+// ---- Health events: ensure each demo cow has recent history ----
+$conn->exec("DELETE FROM health_events WHERE farm_id = 1");
+$insertEvent = $conn->prepare(
+    "INSERT INTO health_events (farm_id, cow_id, event_date, event_type, severity, description)
+     SELECT 1, cow_id, DATE_SUB(CURDATE(), INTERVAL ? DAY), ?, ?, ? FROM cows WHERE unique_id = ?"
+);
+$events = [
+    ['BD003', 2,  'Treatment',   'urgent',   'Foot and Mouth Disease treatment — under veterinary care'],
+    ['BD001', 4,  'Deworming',   'moderate', 'Regular deworming treatment, monitoring appetite'],
+    ['COW123', 9, 'Vaccination', 'routine',  'Annual vaccination completed'],
+    ['BD002', 12, 'Check-up',    'routine',  'Routine pregnancy check — progressing normally'],
+];
+foreach ($events as [$uniqueId, $daysAgo, $type, $severity, $desc]) {
+    $insertEvent->execute([$daysAgo, $type, $severity, $desc, $uniqueId]);
+}
+echo "Seeded health events.\n";
 
 // ---- Alerts: recent timestamps, linked to their cow where relevant ----
 $conn->exec("UPDATE alerts SET alert_time = DATE_SUB(NOW(), INTERVAL FLOOR(1 + RAND() * 72) HOUR)");

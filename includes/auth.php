@@ -7,16 +7,15 @@ function isLoggedIn() {
     return isset($_SESSION['admin_id']);
 }
 
-// Current user's role, or null if not logged in
-function currentRole() {
-    return $_SESSION['role'] ?? null;
-}
+// NOTE: there is deliberately no global currentRole() here. A user's role is
+// per-farm and lives in farm_users — use currentFarmRole() from tenant.php,
+// or hasPermission()/requirePermission() from permissions.php.
 
 // Verify login credentials against a hashed password
 function verifyLogin($username, $password) {
     try {
         $conn = getDBConnection();
-        $stmt = $conn->prepare("SELECT admin_id, username, password_hash, role, farm_id FROM admin_users WHERE username = ?");
+        $stmt = $conn->prepare("SELECT admin_id, username, password_hash, is_platform_admin FROM admin_users WHERE username = ?");
         $stmt->execute([$username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -26,8 +25,10 @@ function verifyLogin($username, $password) {
 
             $_SESSION['admin_id'] = $user['admin_id'];
             $_SESSION['username'] = $user['username'];
-            $_SESSION['role'] = $user['role'];
-            $_SESSION['farm_id'] = $user['farm_id'] ?? 1;
+            $_SESSION['is_platform_admin'] = (int) $user['is_platform_admin'];
+            // The active farm and the role on it are resolved from live
+            // membership by the tenant context, never stored as authority here.
+            unset($_SESSION['farm_id'], $_SESSION['role']);
             return true;
         }
 
@@ -43,14 +44,6 @@ function requireLogin() {
     if (!isLoggedIn()) {
         header('Location: ' . BASE_URL . 'index.php');
         exit();
-    }
-}
-
-// Restrict a page to one or more roles. Call after requireLogin().
-function requireRole($allowedRoles) {
-    if (!in_array(currentRole(), (array) $allowedRoles, true)) {
-        http_response_code(403);
-        exit('You do not have permission to access this page.');
     }
 }
 

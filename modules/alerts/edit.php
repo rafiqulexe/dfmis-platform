@@ -4,31 +4,23 @@ require_once '../../config/database.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
+require_once '../../includes/repository.php';
 requireLogin();
 requirePermission('alerts.edit');
 
 $alert_id = isset($_GET['id']) ? $_GET['id'] : null;
 $error_message = '';
 $success_message = '';
+$alert = null;
 
-// Fetch alert details if ID is provided
+$conn = getDBConnection();
+
 if ($alert_id) {
-    try {
-        $conn = getDBConnection();
-        $stmt = $conn->prepare("SELECT * FROM alerts WHERE alert_id = ?");
-        $stmt->execute([$alert_id]);
-        $alert = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$alert) {
-            $error_message = "Alert not found";
-        }
-    } catch (PDOException $e) {
-        $error_message = safeError($e, "Database error");
-    }
+    $alert = tenantFindOr404($conn, 'alerts', 'alert_id', $alert_id);
 }
 
 // Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($alert && $_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
     $alert_type = $_POST['alert_type'] ?? '';
@@ -36,9 +28,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $alert_time = $_POST['alert_time'] ?? '';
 
     try {
-        $conn = getDBConnection();
-        $stmt = $conn->prepare("UPDATE alerts SET alert_type = ?, description = ?, alert_time = ? WHERE alert_id = ?");
-        $stmt->execute([$alert_type, $description, $alert_time, $alert_id]);
+        tenantExec(
+            $conn,
+            "UPDATE alerts SET alert_type = ?, description = ?, alert_time = ? WHERE alert_id = ? AND {scope}",
+            [$alert_type, $description, $alert_time, $alert['alert_id']]
+        );
         $success_message = "Alert updated successfully";
 
         // Redirect back to index after successful update

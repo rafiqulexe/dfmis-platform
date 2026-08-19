@@ -4,6 +4,7 @@ require_once '../../config/database.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
+require_once '../../includes/repository.php';
 requireLogin();
 requirePermission('alerts.delete');
 
@@ -15,31 +16,15 @@ if (!$alert_id) {
     exit();
 }
 
-// Check if the alert exists before deletion
-try {
-    $conn = getDBConnection();
-    $stmt = $conn->prepare("SELECT alert_id FROM alerts WHERE alert_id = ?");
-    $stmt->execute([$alert_id]);
-
-    if (!$stmt->fetch()) {
-        $_SESSION['error_message'] = "Alert not found.";
-        header('Location: index.php');
-        exit();
-    }
-} catch (PDOException $e) {
-    $_SESSION['error_message'] = safeError($e, "Database error");
-    header('Location: index.php');
-    exit();
-}
+$conn = getDBConnection();
+$alert = tenantFindOr404($conn, 'alerts', 'alert_id', $alert_id);
 
 // Handle the deletion
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
     try {
-        $conn = getDBConnection();
-        $stmt = $conn->prepare("DELETE FROM alerts WHERE alert_id = ?");
-        $stmt->execute([$alert_id]);
+        tenantExec($conn, "DELETE FROM alerts WHERE alert_id = ? AND {scope}", [$alert['alert_id']]);
 
         $_SESSION['success_message'] = "Alert deleted successfully.";
         header('Location: index.php');

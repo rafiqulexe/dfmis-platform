@@ -1,6 +1,6 @@
 <?php
 require_once 'includes/auth.php';
-require_once 'includes/tenant.php';
+require_once 'includes/repository.php';
 require_once 'includes/functions.php';
 require_once 'includes/permissions.php';
 require_once 'includes/insights.php';

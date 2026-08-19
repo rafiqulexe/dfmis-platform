@@ -1,11 +1,13 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/repository.php';
 requireLogin();
+requirePermission('feeding.view');
 
 try {
     $conn = getDBConnection();
-    $stmt = $conn->query("SELECT * FROM feeding_schedules ORDER BY feed_time");
-    $schedules = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $schedules = tenantQuery($conn, "SELECT * FROM feeding_schedules WHERE {scope} ORDER BY feed_time");
 } catch (PDOException $e) {
     $schedules = [];
 }
@@ -20,11 +22,13 @@ require_once '../../includes/header.php';
                 <h1 class="text-2xl font-semibold text-gray-900">Feeding Schedules</h1>
                 <p class="mt-2 text-sm text-gray-700">A list of all feeding schedules</p>
             </div>
-            <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-                <a href="add.php" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
-                    Add Schedule
-                </a>
-            </div>
+            <?php if (hasPermission('feeding.create')): ?>
+                <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+                    <a href="add.php" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
+                        Add Schedule
+                    </a>
+                </div>
+            <?php endif; ?>
         </div>
 
         <!-- Schedules List -->
