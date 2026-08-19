@@ -1,8 +1,9 @@
-# DFMS Architecture
+# DFMIS Architecture
 
-DFMS is being built as a multi-tenant SaaS platform. It currently serves one
-customer (Green Valley Dairy Group), but every architectural decision assumes many
-independent customers will share this codebase and database.
+DFMIS is being built as a multi-tenant, multi-vertical SaaS platform. It
+currently serves one customer (Green Valley Dairy Group) running one dairy farm, but
+every architectural decision assumes many independent customers, each with
+several farms, of several different farm types, sharing this codebase.
 
 **If you read only one section, read [Tenancy rules](#tenancy-rules-non-negotiable).**
 
@@ -13,11 +14,30 @@ independent customers will share this codebase and database.
 ```
 Platform
 └── Organization        the customer / billing boundary
-    └── Farm            a physical operation; belongs to exactly one organization
-        └── Barn        (planned)
-            └── Cow
+    └── Farm            belongs to exactly one organization; has a farm_type
+        └── Location    barn / house / pond / field / greenhouse
+            └── Entity  cow today; flock, stock or crop later
                 └── all operational data
 ```
+
+## Core vs vertical
+
+The single most important structural rule after tenancy:
+
+| Layer | Contains | May assume a vertical? |
+|---|---|---|
+| **Core platform** | auth, organizations, farms, users, permissions, tenant context, inventory, finance, reports, alerts/notifications, AI infrastructure, audit log, storage | **No — never** |
+| **Vertical module** | `cows`, `health_events`, `milk_production`, feeding — and later flocks, ponds, fields | Yes, that is their purpose |
+
+Core tables reference other records through a generic `(entity_type,
+entity_id)` pair — never a `cow_id` column. `alerts`, `ai_usage` and
+`audit_log` all follow this. A new vertical must not require a schema change
+to core.
+
+`farms.farm_type` (`livestock`, `poultry`, `aquaculture`, `crop`,
+`greenhouse`, `mixed`) plus `farm_subtype` drive which modules and dashboard
+a farm gets. `locations` is deliberately not named `barns` — the same table
+is a poultry house, a pond or a field, with the vertical in `location_type`.
 
 ### Why business tables carry `farm_id` and not `organization_id`
 
@@ -185,6 +205,20 @@ user's action — a failure is logged server-side and swallowed.
 3. Add the table name to `DFMS_TENANT_TABLES` in `repository.php` —
    `tenantFind()` refuses tables not listed there.
 4. Access it only through the repository helpers.
+5. If it is a **core** table, reference other records via
+   `(entity_type, entity_id)`, never a vertical-specific foreign key.
+
+## Adding a new vertical
+
+Nothing in core should need to change:
+
+1. Add the farm type to `farms.farm_type` and its locations to
+   `locations.location_type`.
+2. Create the vertical's own tables under `modules/<vertical>/`, each
+   `farm_id`-scoped and registered in `DFMS_TENANT_TABLES`.
+3. Add a case to `alertTargetLink()` (`includes/insights.php`) so alerts for
+   the new entity deep-link correctly.
+4. Pass `entity_type`/`entity_id` to `aiComplete()` for AI attribution.
 
 ---
 
@@ -220,6 +254,7 @@ permissions or data access.** Add a case whenever you add a module.
 mysql -u root < database.sql
 mysql -u root dfms < database/migrations/002_tenancy_and_extensions.sql
 mysql -u root dfms < database/migrations/003_organizations_and_membership.sql
+mysql -u root dfms < database/migrations/004_multivertical_foundation.sql
 php database/seed_admin.php
 php database/seed_demo_data.php
 php -S localhost:8000 -t .

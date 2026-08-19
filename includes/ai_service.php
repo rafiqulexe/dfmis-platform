@@ -46,18 +46,22 @@ function aiUsageThisMonth(PDO $conn, $organizationId) {
 
 function recordAiUsage(PDO $conn, array $ctx, $status, $inputTokens = 0, $outputTokens = 0) {
     $stmt = $conn->prepare(
-        "INSERT INTO ai_usage (organization_id, farm_id, admin_id, feature, model, cow_id, input_tokens, output_tokens, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO ai_usage (organization_id, farm_id, admin_id, feature, model, entity_type, entity_id, input_tokens, output_tokens, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     $stmt->execute([
         $ctx['organization_id'], $ctx['farm_id'], $ctx['admin_id'],
-        $ctx['feature'], DFMS_AI_MODEL, $ctx['cow_id'] ?? null,
+        $ctx['feature'], DFMS_AI_MODEL,
+        $ctx['entity_type'] ?? null, $ctx['entity_id'] ?? null,
         $inputTokens, $outputTokens, $status,
     ]);
 }
 
 /**
  * Run an AI completion for a feature, fully attributed to the current tenant.
+ *
+ * $options may carry entity_type/entity_id ('cow', 'flock', 'pond', 'field'…)
+ * so usage stays attributable without the core AI layer knowing any vertical.
  *
  * Returns ['ok' => bool, 'text' => string|null, 'reason' => string|null].
  * Callers must render a degraded state on failure rather than inventing
@@ -70,7 +74,8 @@ function aiComplete($feature, $systemPrompt, $userPrompt, array $options = []) {
         'farm_id' => currentFarmId(),
         'admin_id' => currentUserId(),
         'feature' => $feature,
-        'cow_id' => $options['cow_id'] ?? null,
+        'entity_type' => $options['entity_type'] ?? null,
+        'entity_id' => $options['entity_id'] ?? null,
     ];
 
     if ($ctx['organization_id'] === null) {

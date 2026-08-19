@@ -53,6 +53,9 @@ $conn->exec("INSERT INTO organizations (organization_id, name, plan, status)
 $conn->exec("INSERT INTO farms (farm_id, organization_id, name)
              SELECT 2, 2, 'Rival Farm (isolation test)'
              WHERE NOT EXISTS (SELECT 1 FROM farms WHERE farm_id = 2)");
+// Force the fixture into its own organization so the suite exercises true
+// cross-tenant separation, not merely two farms of the same customer.
+$conn->exec("UPDATE farms SET organization_id = 2 WHERE farm_id = 2");
 $conn->exec("INSERT INTO cows (farm_id, unique_id, name, breed, date_of_birth, notes)
              SELECT 2, 'RIVAL001', 'Should Be Invisible', 'Test', '2022-01-01',
                     'Belongs to farm 2 - must never be visible to farm 1 users'

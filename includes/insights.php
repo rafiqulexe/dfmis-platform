@@ -7,6 +7,21 @@
 
 const DFMS_SEVERITY_RANK = ['critical' => 0, 'warning' => 1, 'info' => 2, 'positive' => 3];
 
+// Maps an alert's generic (entity_type, entity_id) target to the page that
+// shows it. New verticals add a case here rather than changing the alerts
+// schema or the core notification code.
+function alertTargetLink($entityType, $entityId) {
+    if ($entityId === null) {
+        return 'modules/alerts/';
+    }
+    switch ($entityType) {
+        case 'cow':
+            return 'modules/cows/view.php?id=' . (int) $entityId;
+        default:
+            return 'modules/alerts/';
+    }
+}
+
 // Structured insight cards for the dashboard's Farm Advisor panel.
 // Each has severity, title, why/impact/action, and a link to act on it.
 function getFarmAdvisorInsights(PDO $conn, int $farmId): array {
@@ -139,7 +154,7 @@ function getAttentionItems(PDO $conn, int $farmId, int $limit = 6): array {
     }
 
     $stmt = $conn->prepare("
-        SELECT alert_id, alert_type, severity, description, cow_id
+        SELECT alert_id, alert_type, severity, description, entity_type, entity_id
         FROM alerts WHERE farm_id = ? AND is_read = 0 AND severity IN ('critical','warning')
         ORDER BY FIELD(severity, 'critical', 'warning'), alert_time DESC
     ");
@@ -149,7 +164,7 @@ function getAttentionItems(PDO $conn, int $farmId, int $limit = 6): array {
             'severity' => $row['severity'],
             'title' => $row['alert_type'],
             'subtitle' => $row['description'],
-            'link' => $row['cow_id'] ? 'modules/cows/view.php?id=' . $row['cow_id'] : 'modules/alerts/',
+            'link' => alertTargetLink($row['entity_type'], $row['entity_id']),
         ];
     }
 
