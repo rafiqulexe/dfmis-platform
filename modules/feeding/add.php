@@ -2,7 +2,10 @@
 require_once '../../includes/auth.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/tenant.php';
 requireLogin();
+requirePermission('feeding.create');
 
 $error = '';
 $success = '';
@@ -19,8 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             $conn = getDBConnection();
-            $stmt = $conn->prepare("INSERT INTO feeding_schedules (feed_time, feed_type, feed_amount) VALUES (?, ?, ?)");
-            $stmt->execute([$feed_time, $feed_type, $feed_amount]);
+            $stmt = $conn->prepare("INSERT INTO feeding_schedules (feed_time, feed_type, feed_amount, farm_id) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$feed_time, $feed_type, $feed_amount, currentFarmId()]);
             $success = 'Feeding schedule added successfully';
         } catch (PDOException $e) {
             $error = safeError($e, 'Error adding schedule');

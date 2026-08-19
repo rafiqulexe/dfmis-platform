@@ -3,7 +3,10 @@ require_once '../../includes/auth.php';
 require_once '../../config/database.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/tenant.php';
 requireLogin();
+requirePermission('inventory.update');
 
 $inventory_id = isset($_GET['id']) ? $_GET['id'] : null;
 $error_message = '';
@@ -80,11 +83,11 @@ if ($inventory && $_SERVER['REQUEST_METHOD'] === 'POST') {
         // Check if stock is low and create alert if necessary
         if ($final_quantity <= 10) { // You can adjust this threshold
             $stmt = $conn->prepare("
-                INSERT INTO alerts (alert_time, alert_type, description) 
-                VALUES (NOW(), 'Low Inventory', ?)
+                INSERT INTO alerts (alert_time, alert_type, severity, description, farm_id)
+                VALUES (NOW(), 'Low Inventory', 'warning', ?, ?)
             ");
             $description = "Low stock alert for " . $inventory['item_name'] . " (" . $final_quantity . " " . $inventory['unit'] . " remaining)";
-            $stmt->execute([$description]);
+            $stmt->execute([$description, currentFarmId()]);
         }
 
         $conn->commit();

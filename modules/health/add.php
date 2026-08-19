@@ -2,7 +2,10 @@
 require_once '../../includes/auth.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/tenant.php';
 requireLogin();
+requirePermission('health.create');
 
 $error = '';
 $success = '';
@@ -22,14 +25,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cow_id = $_POST['cow_id'] ?? '';
     $event_date = $_POST['event_date'] ?? '';
     $event_type = $_POST['event_type'] ?? '';
+    $severity = $_POST['severity'] ?? 'routine';
     $description = $_POST['description'] ?? '';
 
     if (empty($cow_id) || empty($event_date) || empty($event_type)) {
         $error = 'Please fill in all required fields';
     } else {
         try {
-            $stmt = $conn->prepare("INSERT INTO health_events (cow_id, event_date, event_type, description) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$cow_id, $event_date, $event_type, $description]);
+            $stmt = $conn->prepare("INSERT INTO health_events (cow_id, event_date, event_type, severity, description, farm_id, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$cow_id, $event_date, $event_type, $severity, $description, currentFarmId(), $_SESSION['admin_id']]);
             $success = 'Health event added successfully';
         } catch (PDOException $e) {
             $error = safeError($e, 'Error adding health event');
@@ -93,6 +97,16 @@ require_once '../../includes/header.php';
                             <option value="Check-up">Check-up</option>
                             <option value="Treatment">Treatment</option>
                             <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="severity" class="block text-sm font-medium text-gray-700">Severity</label>
+                        <select name="severity" id="severity" required
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <option value="routine">Routine</option>
+                            <option value="moderate">Moderate</option>
+                            <option value="urgent">Urgent</option>
                         </select>
                     </div>
 

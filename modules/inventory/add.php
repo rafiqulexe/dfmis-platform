@@ -2,7 +2,10 @@
 require_once '../../includes/auth.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/tenant.php';
 requireLogin();
+requirePermission('inventory.create');
 
 $error = '';
 $success = '';
@@ -23,14 +26,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn->beginTransaction();
 
             // Add item
-            $stmt = $conn->prepare("INSERT INTO inventory_items (item_name, item_type, unit) VALUES (?, ?, ?)");
-            $stmt->execute([$item_name, $item_type, $unit]);
+            $stmt = $conn->prepare("INSERT INTO inventory_items (item_name, item_type, unit, farm_id) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$item_name, $item_type, $unit, currentFarmId()]);
             $item_id = $conn->lastInsertId();
 
             // Set initial quantity
             if ($initial_quantity > 0) {
-                $stmt = $conn->prepare("INSERT INTO inventory_levels (item_id, quantity) VALUES (?, ?)");
-                $stmt->execute([$item_id, $initial_quantity]);
+                $stmt = $conn->prepare("INSERT INTO inventory_levels (item_id, quantity, farm_id) VALUES (?, ?, ?)");
+                $stmt->execute([$item_id, $initial_quantity, currentFarmId()]);
             }
 
             $conn->commit();

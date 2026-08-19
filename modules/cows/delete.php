@@ -3,7 +3,9 @@ require_once '../../includes/auth.php';
 require_once '../../config/database.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/permissions.php';
 requireLogin();
+requirePermission('cows.delete');
 
 $cow_id = isset($_GET['id']) ? $_GET['id'] : null;
 $error_message = '';

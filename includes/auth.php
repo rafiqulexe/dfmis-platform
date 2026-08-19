@@ -16,7 +16,7 @@ function currentRole() {
 function verifyLogin($username, $password) {
     try {
         $conn = getDBConnection();
-        $stmt = $conn->prepare("SELECT admin_id, username, password_hash, role FROM admin_users WHERE username = ?");
+        $stmt = $conn->prepare("SELECT admin_id, username, password_hash, role, farm_id FROM admin_users WHERE username = ?");
         $stmt->execute([$username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -27,6 +27,7 @@ function verifyLogin($username, $password) {
             $_SESSION['admin_id'] = $user['admin_id'];
             $_SESSION['username'] = $user['username'];
             $_SESSION['role'] = $user['role'];
+            $_SESSION['farm_id'] = $user['farm_id'] ?? 1;
             return true;
         }
 

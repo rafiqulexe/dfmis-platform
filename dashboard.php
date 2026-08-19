@@ -1,253 +1,301 @@
 <?php
 require_once 'includes/auth.php';
+require_once 'includes/tenant.php';
+require_once 'includes/functions.php';
+require_once 'includes/permissions.php';
+require_once 'includes/insights.php';
 requireLogin();
 
-// Get database connection
+$farmId = currentFarmId();
 $conn = getDBConnection();
+$error_message = '';
 
-// Fetch basic statistics
 try {
-    // Total cows
-    $stmt = $conn->query("SELECT COUNT(*) as total FROM cows");
-    $totalCows = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
+    $stmt = $conn->prepare("SELECT name FROM farms WHERE farm_id = ?");
+    $stmt->execute([$farmId]);
+    $farmName = $stmt->fetchColumn() ?: 'Your Farm';
 
-    // Today's milk production
-    $stmt = $conn->query("SELECT total_milk_yield FROM milk_production WHERE production_date = CURDATE()");
-    $todayMilk = $stmt->fetch(PDO::FETCH_ASSOC)['total_milk_yield'] ?? 0;
+    $stmt = $conn->prepare("SELECT COUNT(*) FROM cows WHERE farm_id = ? AND deleted_at IS NULL");
+    $stmt->execute([$farmId]);
+    $totalCows = (int) $stmt->fetchColumn();
 
-    // Low inventory alerts
-    $stmt = $conn->query("SELECT COUNT(*) as total FROM alerts WHERE alert_type = 'Low Inventory'");
-    $lowInventory = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
+    $herdCounts = ['healthy' => 0, 'at_risk' => 0, 'sick' => 0, 'treatment' => 0];
+    $stmt = $conn->prepare("SELECT health_status, COUNT(*) AS n FROM cows WHERE farm_id = ? AND deleted_at IS NULL GROUP BY health_status");
+    $stmt->execute([$farmId]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $herdCounts[$row['health_status']] = (int) $row['n'];
+    }
 
-    // Recent health events
-    $stmt = $conn->query("SELECT COUNT(*) as total FROM health_events WHERE event_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)");
-    $recentHealth = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
+    $stmt = $conn->prepare("SELECT COUNT(*) FROM cows WHERE farm_id = ? AND deleted_at IS NULL AND reproductive_status = 'pregnant'");
+    $stmt->execute([$farmId]);
+    $pregnantCount = (int) $stmt->fetchColumn();
 
-    // Get last 7 days milk production for chart
-    $stmt = $conn->query("
-        SELECT production_date, total_milk_yield 
-        FROM milk_production 
-        WHERE production_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-        ORDER BY production_date ASC
-    ");
-    $milkData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt = $conn->prepare("SELECT COUNT(*) FROM cows WHERE farm_id = ? AND deleted_at IS NULL AND lactation_status = 'lactating'");
+    $stmt->execute([$farmId]);
+    $lactatingCount = (int) $stmt->fetchColumn();
 
+    $stmt = $conn->prepare("SELECT total_milk_yield FROM milk_production WHERE farm_id = ? AND production_date = CURDATE()");
+    $stmt->execute([$farmId]);
+    $todayMilk = (float) ($stmt->fetchColumn() ?: 0);
+
+    $stmt = $conn->prepare("SELECT AVG(total_milk_yield) FROM milk_production WHERE farm_id = ? AND production_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)");
+    $stmt->execute([$farmId]);
+    $last7Avg = (float) ($stmt->fetchColumn() ?: 0);
+
+    $stmt = $conn->prepare("SELECT AVG(total_milk_yield) FROM milk_production WHERE farm_id = ? AND production_date >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)");
+    $stmt->execute([$farmId]);
+    $last30Avg = (float) ($stmt->fetchColumn() ?: 0);
+
+    $stmt = $conn->prepare("SELECT production_date, total_milk_yield FROM milk_production WHERE farm_id = ? ORDER BY production_date ASC");
+    $stmt->execute([$farmId]);
+    $milkSeries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $insights = getFarmAdvisorInsights($conn, $farmId);
+    $attentionItems = getAttentionItems($conn, $farmId);
 } catch (PDOException $e) {
-    // For demo, simply set default values if query fails
+    $error_message = safeError($e, 'Dashboard data error');
     $totalCows = 0;
+    $herdCounts = ['healthy' => 0, 'at_risk' => 0, 'sick' => 0, 'treatment' => 0];
+    $pregnantCount = 0;
+    $lactatingCount = 0;
     $todayMilk = 0;
-    $lowInventory = 0;
-    $recentHealth = 0;
-    $milkData = [];
+    $last7Avg = 0;
+    $last30Avg = 0;
+    $milkSeries = [];
+    $insights = [];
+    $attentionItems = [];
+    $farmName = 'Your Farm';
 }
+
+$herdTotal = max(1, array_sum($herdCounts));
+$herdColors = ['healthy' => 'var(--primary)', 'at_risk' => 'var(--brand-gold)', 'sick' => 'var(--danger)', 'treatment' => 'var(--info)'];
+$herdLabels = ['healthy' => 'Healthy', 'at_risk' => 'At risk', 'sick' => 'Sick', 'treatment' => 'In treatment'];
+
+$weekDelta = $last30Avg > 0 ? (($last7Avg - $last30Avg) / $last30Avg) * 100 : 0;
+$weekDeltaClass = $weekDelta > 1 ? 'up' : ($weekDelta < -1 ? 'down' : 'flat');
+$weekDeltaSign = $weekDelta > 0 ? '+' : '';
 
 require_once 'includes/header.php';
 ?>
 
-<style>
-    .backdrop-blur-sm {
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-    }
-    
-    .transition-transform {
-        transition: transform 0.3s ease-in-out;
-    }
-    
-    .hover\:scale-105:hover {
-        transform: scale(1.05);
-    }
-</style>
-
-<!-- Load Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<div class="py-6 relative">
-    <!-- Background Image Container -->
-    <div class="absolute inset-0 z-0">
-        <img src="<?php echo BASE_URL; ?>assets/images/cow.png" 
-             alt="Dairy Farm Background" 
-             class="w-full h-full object-cover opacity-65"
-             style="filter: saturate(0.8) brightness(1.2);">
-    </div>
-
-    <!-- Main Content with relative positioning and glass-morphism effect -->
-    <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <!-- Welcome Message with semi-transparent background -->
-        <div class="bg-white bg-opacity-90 backdrop-blur-sm rounded-lg p-6 shadow-lg">
-            <h1 class="text-2xl font-semibold text-gray-900">Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?>!</h1>
-            <p class="mt-1 text-sm text-gray-600">Here's an overview of your farm's current status</p>
-        </div>
-
-        <!-- Milk Production Chart -->
-        <div class="mt-6 bg-white bg-opacity-90 backdrop-blur-sm rounded-lg p-6 shadow-lg">
-            <h2 class="text-lg font-medium text-gray-900 mb-4">Last 7 Days Milk Production</h2>
-            <canvas id="milkProductionChart"></canvas>
-        </div>
-
-        <!-- Statistics Cards -->
-        <div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            <!-- Total Cows -->
-            <div class="bg-white bg-opacity-90 backdrop-blur-sm overflow-hidden shadow-lg rounded-lg transition-transform duration-300 hover:scale-105">
-                <div class="p-5">
-                    <div class="flex items-center">
-                        <div class="flex-shrink-0 bg-green-500 rounded-md p-3">
-                            <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/>
-                            </svg>
-                        </div>
-                        <div class="ml-5 w-0 flex-1">
-                            <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">Total Cows</dt>
-                                <dd class="text-lg font-semibold text-gray-900"><?php echo $totalCows; ?></dd>
-                            </dl>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-gray-50 px-5 py-3">
-                    <div class="text-sm">
-                        <a href="<?php echo BASE_URL; ?>modules/cows/" class="font-medium text-green-600 hover:text-green-900">View all cows →</a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Today's Milk Production -->
-            <div class="bg-white bg-opacity-90 backdrop-blur-sm overflow-hidden shadow-lg rounded-lg transition-transform duration-300 hover:scale-105">
-                <div class="p-5">
-                    <div class="flex items-center">
-                        <div class="flex-shrink-0 bg-green-500 rounded-md p-3">
-                            <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-                            </svg>
-                        </div>
-                        <div class="ml-5 w-0 flex-1">
-                            <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">Today's Milk (L)</dt>
-                                <dd class="text-lg font-semibold text-gray-900"><?php echo number_format($todayMilk, 2); ?></dd>
-                            </dl>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-gray-50 px-5 py-3">
-                    <div class="text-sm">
-                        <a href="<?php echo BASE_URL; ?>modules/milk/" class="font-medium text-blue-600 hover:text-blue-900">View production →</a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Low Inventory Alerts -->
-            <div class="bg-white bg-opacity-90 backdrop-blur-sm overflow-hidden shadow-lg rounded-lg transition-transform duration-300 hover:scale-105">
-                <div class="p-5">
-                    <div class="flex items-center">
-                        <div class="flex-shrink-0 bg-yellow-500 rounded-md p-3">
-                            <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                            </svg>
-                        </div>
-                        <div class="ml-5 w-0 flex-1">
-                            <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">Low Stock Alerts</dt>
-                                <dd class="text-lg font-semibold text-gray-900"><?php echo $lowInventory; ?></dd>
-                            </dl>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-gray-50 px-5 py-3">
-                    <div class="text-sm">
-                        <a href="<?php echo BASE_URL; ?>modules/inventory/" class="font-medium text-blue-600 hover:text-blue-900">Check inventory →</a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Recent Health Events -->
-            <div class="bg-white bg-opacity-90 backdrop-blur-sm overflow-hidden shadow-lg rounded-lg transition-transform duration-300 hover:scale-105">
-                <div class="p-5">
-                    <div class="flex items-center">
-                        <div class="flex-shrink-0 bg-red-500 rounded-md p-3">
-                            <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-                            </svg>
-                        </div>
-                        <div class="ml-5 w-0 flex-1">
-                            <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">Health Events (7d)</dt>
-                                <dd class="text-lg font-semibold text-gray-900"><?php echo $recentHealth; ?></dd>
-                            </dl>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-gray-50 px-5 py-3">
-                    <div class="text-sm">
-                        <a href="<?php echo BASE_URL; ?>modules/health/" class="font-medium text-blue-600 hover:text-blue-900">View health records →</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="mt-8">
-            <h2 class="text-lg font-medium text-gray-900 bg-white bg-opacity-90 backdrop-blur-sm p-4 rounded-lg shadow-lg">Quick Actions</h2>
-            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <a href="<?php echo BASE_URL; ?>modules/cows/add.php" 
-                   class="block p-6 bg-white bg-opacity-90 backdrop-blur-sm shadow-lg rounded-lg 
-                          hover:bg-green-50 hover:bg-opacity-90 transition-all duration-300 transform hover:scale-105">
-                    <h3 class="text-base font-medium text-green-900">Add New Cow</h3>
-                    <p class="mt-1 text-sm text-gray-500">Register a new cow in the system</p>
-                </a>
-                <a href="<?php echo BASE_URL; ?>modules/milk/add.php" 
-                   class="block p-6 bg-white bg-opacity-90 backdrop-blur-sm shadow-lg rounded-lg 
-                          hover:bg-gray-50 hover:bg-opacity-90 transition-all duration-300 transform hover:scale-105">
-                    <h3 class="text-base font-medium text-gray-900">Record Milk Production</h3>
-                    <p class="mt-1 text-sm text-gray-500">Enter today's milk production data</p>
-                </a>
-                <a href="<?php echo BASE_URL; ?>modules/health/add.php" 
-                   class="block p-6 bg-white bg-opacity-90 backdrop-blur-sm shadow-lg rounded-lg 
-                          hover:bg-gray-50 hover:bg-opacity-90 transition-all duration-300 transform hover:scale-105">
-                    <h3 class="text-base font-medium text-gray-900">Log Health Event</h3>
-                    <p class="mt-1 text-sm text-gray-500">Record a new health event</p>
-                </a>
-            </div>
-        </div>
-    </div>
+<div class="dfms-page-header dfms-reveal" style="animation-delay:.02s;">
+    <p class="eyebrow">Good to see you, <?php echo htmlspecialchars($_SESSION['username']); ?></p>
+    <h1><?php echo htmlspecialchars($farmName); ?> — Command Center</h1>
+    <p><?php echo date('l, F j, Y'); ?> · here's what's happening across the farm today.</p>
 </div>
 
+<?php if ($error_message): ?>
+    <div class="dfms-alert dfms-alert-error"><?php echo htmlspecialchars($error_message); ?></div>
+<?php endif; ?>
+
+<!-- Farm Advisor -->
+<section class="dfms-section dfms-reveal" style="animation-delay:.06s;">
+    <div class="dfms-section-header">
+        <div>
+            <h2>Farm Advisor</h2>
+            <p>Automated insights, recomputed from today's data.</p>
+        </div>
+    </div>
+    <div class="dfms-insight-grid">
+        <?php foreach ($insights as $insight): ?>
+            <div class="dfms-insight-card <?php echo htmlspecialchars($insight['severity']); ?>">
+                <div class="dfms-insight-title"><?php echo htmlspecialchars($insight['title']); ?></div>
+                <p class="dfms-insight-meta"><strong>Why:</strong> <?php echo htmlspecialchars($insight['why']); ?></p>
+                <p class="dfms-insight-meta"><strong>Impact:</strong> <?php echo htmlspecialchars($insight['impact']); ?></p>
+                <p class="dfms-insight-meta"><strong>Action:</strong> <?php echo htmlspecialchars($insight['action']); ?></p>
+                <a class="dfms-insight-link" href="<?php echo BASE_URL . $insight['link']; ?>"><?php echo htmlspecialchars($insight['link_label']); ?> →</a>
+            </div>
+        <?php endforeach; ?>
+    </div>
+</section>
+
+<!-- Live Farm Status -->
+<section class="dfms-section dfms-reveal" style="animation-delay:.1s;">
+    <div class="dfms-section-header">
+        <div>
+            <h2>Live Farm Status</h2>
+            <p>Herd health and production, at a glance.</p>
+        </div>
+    </div>
+    <div class="dfms-two-col">
+        <div class="dfms-card">
+            <div class="dfms-stat-label" style="margin-bottom:.6rem;">Herd — <?php echo $totalCows; ?> cow<?php echo $totalCows === 1 ? '' : 's'; ?></div>
+            <div class="dfms-herd-bar">
+                <?php foreach ($herdCounts as $key => $count): ?>
+                    <?php if ($count > 0): ?>
+                        <div class="dfms-herd-bar-segment" style="width:<?php echo ($count / $herdTotal) * 100; ?>%; background:<?php echo $herdColors[$key]; ?>;"></div>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </div>
+            <div class="dfms-herd-legend">
+                <?php foreach ($herdCounts as $key => $count): ?>
+                    <span class="dfms-herd-legend-item">
+                        <span class="dfms-herd-legend-dot" style="background:<?php echo $herdColors[$key]; ?>;"></span>
+                        <?php echo $herdLabels[$key]; ?> (<?php echo $count; ?>)
+                    </span>
+                <?php endforeach; ?>
+            </div>
+            <div class="dfms-stat-row" style="margin-top:1.5rem;">
+                <div>
+                    <div class="dfms-stat-value"><?php echo $pregnantCount; ?></div>
+                    <div class="dfms-stat-label">Pregnant</div>
+                </div>
+                <div>
+                    <div class="dfms-stat-value"><?php echo $lactatingCount; ?></div>
+                    <div class="dfms-stat-label">Lactating</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dfms-card">
+            <div class="dfms-stat-label" style="margin-bottom:.6rem;">Milk production</div>
+            <div class="dfms-stat-row">
+                <div>
+                    <div class="dfms-stat-value"><?php echo number_format($todayMilk, 1); ?> L</div>
+                    <div class="dfms-stat-label">Today</div>
+                </div>
+                <div>
+                    <div class="dfms-stat-value"><?php echo number_format($last7Avg, 1); ?> L</div>
+                    <div class="dfms-stat-label">7-day avg</div>
+                    <div class="dfms-stat-delta <?php echo $weekDeltaClass; ?>">
+                        <?php echo $weekDeltaSign; ?><?php echo number_format($weekDelta, 1); ?>% vs 30-day avg
+                    </div>
+                </div>
+                <div>
+                    <div class="dfms-stat-value"><?php echo number_format($last30Avg, 1); ?> L</div>
+                    <div class="dfms-stat-label">30-day avg</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Production trend -->
+<section class="dfms-section dfms-reveal" style="animation-delay:.14s;">
+    <div class="dfms-card dfms-chart-card">
+        <div class="dfms-section-header" style="margin-bottom:.75rem;">
+            <div>
+                <h2>30-Day Production Trend</h2>
+                <p>Is milk production improving?</p>
+            </div>
+        </div>
+        <div style="height:260px;">
+            <canvas id="milkProductionChart" role="img" aria-label="Line chart of daily milk production over the last 30 days"></canvas>
+        </div>
+    </div>
+</section>
+
+<!-- What Needs Your Attention -->
+<section class="dfms-section dfms-reveal" style="animation-delay:.18s;">
+    <div class="dfms-section-header">
+        <div>
+            <h2>What Needs Your Attention</h2>
+            <p>Prioritized by severity, across the whole farm.</p>
+        </div>
+    </div>
+    <div class="dfms-card">
+        <?php if (empty($attentionItems)): ?>
+            <div class="dfms-empty-state">Nothing needs attention right now — the farm is running clean.</div>
+        <?php else: ?>
+            <div class="dfms-attention-list">
+                <?php foreach ($attentionItems as $item): ?>
+                    <a class="dfms-attention-item" href="<?php echo BASE_URL . $item['link']; ?>">
+                        <span class="dfms-attention-dot <?php echo htmlspecialchars($item['severity']); ?>"></span>
+                        <span>
+                            <span class="dfms-attention-title"><?php echo htmlspecialchars($item['title']); ?></span>
+                            <span class="dfms-attention-subtitle"><?php echo htmlspecialchars($item['subtitle']); ?></span>
+                        </span>
+                        <span class="dfms-attention-chevron">&rsaquo;</span>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+</section>
+
+<!-- Quick Actions -->
+<section class="dfms-section dfms-reveal" style="animation-delay:.22s;">
+    <div class="dfms-section-header">
+        <div>
+            <h2>Quick Actions</h2>
+        </div>
+    </div>
+    <div class="dfms-quick-actions">
+        <?php if (hasPermission('cows.create')): ?>
+            <a class="dfms-quick-action" href="<?php echo BASE_URL; ?>modules/cows/add.php">
+                <span class="dfms-quick-action-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+                </span>
+                <span>
+                    <span class="dfms-quick-action-title">Add New Cow</span><br>
+                    <span class="dfms-quick-action-sub">Register a new animal</span>
+                </span>
+            </a>
+        <?php endif; ?>
+        <?php if (hasPermission('milk.create')): ?>
+            <a class="dfms-quick-action" href="<?php echo BASE_URL; ?>modules/milk/add.php">
+                <span class="dfms-quick-action-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                </span>
+                <span>
+                    <span class="dfms-quick-action-title">Record Milk Production</span><br>
+                    <span class="dfms-quick-action-sub">Log today's yield</span>
+                </span>
+            </a>
+        <?php endif; ?>
+        <?php if (hasPermission('health.create')): ?>
+            <a class="dfms-quick-action" href="<?php echo BASE_URL; ?>modules/health/add.php">
+                <span class="dfms-quick-action-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+                </span>
+                <span>
+                    <span class="dfms-quick-action-title">Log Health Event</span><br>
+                    <span class="dfms-quick-action-sub">Record a check-up or treatment</span>
+                </span>
+            </a>
+        <?php endif; ?>
+        <a class="dfms-quick-action" href="<?php echo BASE_URL; ?>modules/inventory/">
+            <span class="dfms-quick-action-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+            </span>
+            <span>
+                <span class="dfms-quick-action-title">Check Inventory</span><br>
+                <span class="dfms-quick-action-sub">Feed and medicine levels</span>
+            </span>
+        </a>
+    </div>
+</section>
+
 <script>
-// Initialize the milk production chart
-const ctx = document.getElementById('milkProductionChart').getContext('2d');
-new Chart(ctx, {
+const milkCtx = document.getElementById('milkProductionChart').getContext('2d');
+new Chart(milkCtx, {
     type: 'line',
     data: {
-        labels: <?php echo json_encode(array_column($milkData, 'production_date')); ?>,
+        labels: <?php echo json_encode(array_map(fn($r) => date('M j', strtotime($r['production_date'])), $milkSeries)); ?>,
         datasets: [{
             label: 'Milk Production (L)',
-            data: <?php echo json_encode(array_column($milkData, 'total_milk_yield')); ?>,
-            borderColor: 'rgb(34, 197, 94)',
-            backgroundColor: 'rgba(34, 197, 94, 0.1)',
-            tension: 0.1,
+            data: <?php echo json_encode(array_map(fn($r) => (float) $r['total_milk_yield'], $milkSeries)); ?>,
+            borderColor: '#16a34a',
+            backgroundColor: 'rgba(22, 163, 74, 0.08)',
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            borderWidth: 2,
+            tension: 0.35,
             fill: true
         }]
     },
     options: {
         responsive: true,
-        plugins: {
-            legend: {
-                position: 'top',
-            },
-            title: {
-                display: false
-            }
-        },
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
         scales: {
-            y: {
-                beginAtZero: true,
-                title: {
-                    display: true,
-                    text: 'Liters'
-                }
-            }
+            y: { beginAtZero: false, grid: { color: '#e8f0e8' }, ticks: { font: { family: 'Inter' } } },
+            x: { grid: { display: false }, ticks: { font: { family: 'Inter' }, maxTicksLimit: 10 } }
         }
     }
 });
 </script>
 
-<?php require_once 'includes/footer.php'; ?> 
+<?php require_once 'includes/footer.php'; ?>

@@ -3,7 +3,10 @@ require_once '../../includes/auth.php';
 require_once '../../config/database.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/tenant.php';
 requireLogin();
+requirePermission('alerts.create');
 
 $error_message = '';
 $success_message = '';
@@ -16,8 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $conn = getDBConnection();
-        $stmt = $conn->prepare("INSERT INTO alerts (alert_time, alert_type, description) VALUES (NOW(), ?, ?)");
-        $stmt->execute([$alert_type, $description]);
+        $stmt = $conn->prepare("INSERT INTO alerts (alert_time, alert_type, description, farm_id) VALUES (NOW(), ?, ?, ?)");
+        $stmt->execute([$alert_type, $description, currentFarmId()]);
         $success_message = "Alert created successfully";
 
         // Redirect back to index after successful creation

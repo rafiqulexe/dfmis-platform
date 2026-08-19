@@ -2,7 +2,10 @@
 require_once '../../includes/auth.php';
 require_once '../../includes/csrf.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/permissions.php';
+require_once '../../includes/tenant.php';
 requireLogin();
+requirePermission('milk.create');
 
 $error = '';
 $success = '';
@@ -20,14 +23,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn = getDBConnection();
 
             // Check if entry already exists for this date
-            $stmt = $conn->prepare("SELECT production_id FROM milk_production WHERE production_date = ?");
-            $stmt->execute([$production_date]);
+            $stmt = $conn->prepare("SELECT production_id FROM milk_production WHERE production_date = ? AND farm_id = ?");
+            $stmt->execute([$production_date, currentFarmId()]);
 
             if ($stmt->fetch()) {
                 $error = 'A production record already exists for this date';
             } else {
-                $stmt = $conn->prepare("INSERT INTO milk_production (production_date, total_milk_yield) VALUES (?, ?)");
-                $stmt->execute([$production_date, $total_milk_yield]);
+                $stmt = $conn->prepare("INSERT INTO milk_production (production_date, total_milk_yield, farm_id) VALUES (?, ?, ?)");
+                $stmt->execute([$production_date, $total_milk_yield, currentFarmId()]);
                 $success = 'Production record added successfully';
             }
         } catch (PDOException $e) {
