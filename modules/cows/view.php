@@ -34,6 +34,8 @@ try {
     $error_message = safeError($e, "Database error");
 }
 
+$page_title = 'Animal Profile';
+$page_breadcrumb = [['label' => 'Livestock', 'url' => 'index.php'], ['label' => 'Profile']];
 require_once '../../includes/header.php';
 ?>
 

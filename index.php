@@ -35,20 +35,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DFMS — Sign in</title>
+    <title>Sign in · DFM</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Inter:wght@400;500;600&family=Fraunces:ital,wght@0,500;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:wght@400;500;600;700&family=Fraunces:ital,wght@0,500;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/style.css">
-    <link rel="icon" type="image/x-icon" href="<?php echo BASE_URL; ?>assets/images/favicon.ico">
+    <link rel="icon" type="image/svg+xml" href="<?php echo BASE_URL; ?>assets/images/favicon.svg">
+    <meta name="theme-color" content="#1f6f4a">
     <style>
         .login-shell {
             min-height: 100vh;
             display: flex;
-            background: var(--brand-cream);
+            background: var(--surface-page);
         }
 
-        /* ---------- Brand panel: dawn gradient + horizon signature ---------- */
+        /* ---------- Brand panel: dusk gradient + horizon signature ---------- */
 
         .login-brand {
             flex: 1;
@@ -58,10 +59,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             display: flex;
             flex-direction: column;
             justify-content: center;
-            padding: 3rem;
-            background: linear-gradient(200deg, var(--heading) 0%, var(--primary-dark) 55%, var(--brand-gold) 130%);
+            padding: var(--space-12);
+            background: linear-gradient(200deg, var(--brand-900) 0%, var(--brand-700) 55%, var(--accent-700) 135%);
             background-size: 180% 180%;
             background-position: 20% 30%;
+        }
+
+        .login-wordmark {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            position: relative;
+            z-index: 2;
+            margin-bottom: var(--space-10);
+        }
+
+        .login-wordmark-mark {
+            width: 34px;
+            height: 34px;
+            border-radius: var(--radius-md);
+            background: rgba(255, 255, 255, 0.14);
+            display: grid;
+            place-items: center;
+            color: #fff;
+        }
+
+        .login-wordmark-text {
+            font-family: var(--font-display);
+            font-weight: 800;
+            font-size: var(--text-lg);
+            letter-spacing: var(--tracking-tight);
         }
 
         .login-brand-copy {
@@ -73,21 +100,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .login-eyebrow {
             font-family: var(--font-accent);
             font-style: italic;
-            font-size: 1rem;
-            color: var(--brand-gold-soft);
-            margin-bottom: 0.5rem;
+            font-size: var(--text-base);
+            color: var(--accent-300);
+            margin-bottom: var(--space-2);
         }
 
         .login-brand h1 {
             color: #fff;
-            font-size: 2.35rem;
-            letter-spacing: -0.01em;
+            font-size: var(--text-4xl);
+            letter-spacing: var(--tracking-tight);
         }
 
         .login-desc {
-            color: #d1fae5;
-            margin-top: 0.85rem;
-            line-height: 1.55;
+            color: rgba(255, 255, 255, 0.78);
+            margin-top: var(--space-3);
+            line-height: var(--leading-normal);
+            font-size: var(--text-base);
         }
 
         .login-horizon {
@@ -105,11 +133,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .horizon-hill-front {
-            fill: rgba(15, 35, 24, 0.45);
+            fill: rgba(11, 44, 30, 0.5);
         }
 
         .horizon-sun {
-            fill: var(--brand-gold-soft);
+            fill: var(--accent-300);
             opacity: 0.55;
             filter: blur(1px);
         }
@@ -246,10 +274,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </g>
             </svg>
 
+            <div class="login-wordmark login-reveal">
+                <span class="login-wordmark-mark" aria-hidden="true">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v18M5 8c0 4 3 6 7 6M19 8c0 4-3 6-7 6"/>
+                    </svg>
+                </span>
+                <span class="login-wordmark-text">DFM</span>
+            </div>
+
             <div class="login-brand-copy">
-                <p class="login-eyebrow login-reveal">Dairy Farm Intelligence Platform</p>
-                <h1 class="login-reveal">DFMS</h1>
-                <p class="login-desc login-reveal">Every cow, every liter, every vaccination — tracked from first light in the shed to the ledger on your desk.</p>
+                <p class="login-eyebrow login-reveal">Farm Management &amp; Intelligence</p>
+                <h1 class="login-reveal">Run your farm with intelligence.</h1>
+                <p class="login-desc login-reveal">Every animal, every liter, every vaccination — tracked from first light in the shed to the ledger on your desk.</p>
             </div>
         </div>
 

@@ -43,6 +43,8 @@ if ($alert && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Edit Alert';
+$page_breadcrumb = [['label' => 'Alerts', 'url' => 'index.php'], ['label' => 'Edit Alert']];
 require_once '../../includes/header.php';
 ?>
 
@@ -113,3 +115,4 @@ require_once '../../includes/header.php';
         <?php endif; ?>
     </div>
 </div> 
+<?php require_once '../../includes/footer.php'; ?>

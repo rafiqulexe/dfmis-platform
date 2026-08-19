@@ -42,6 +42,8 @@ if ($cow && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Edit Animal';
+$page_breadcrumb = [['label' => 'Livestock', 'url' => 'index.php'], ['label' => 'Edit Animal']];
 require_once '../../includes/header.php';
 ?>
 
@@ -109,3 +111,4 @@ require_once '../../includes/header.php';
         <?php endif; ?>
     </div>
 </div>
+<?php require_once '../../includes/footer.php'; ?>

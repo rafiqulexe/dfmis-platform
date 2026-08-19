@@ -34,6 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Delete Alert';
+$page_breadcrumb = [['label' => 'Alerts', 'url' => 'index.php'], ['label' => 'Delete']];
 require_once '../../includes/header.php';
 ?>
 
@@ -78,3 +80,4 @@ require_once '../../includes/header.php';
         </div>
     </div>
 </div> 
+<?php require_once '../../includes/footer.php'; ?>

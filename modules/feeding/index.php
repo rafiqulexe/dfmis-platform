@@ -12,6 +12,8 @@ try {
     $schedules = [];
 }
 
+$page_title = 'Feeding';
+$page_breadcrumb = [['label' => 'Feeding']];
 require_once '../../includes/header.php';
 ?>
 

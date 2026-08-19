@@ -18,6 +18,8 @@ try {
     $items = [];
 }
 
+$page_title = 'Inventory';
+$page_breadcrumb = [['label' => 'Inventory']];
 require_once '../../includes/header.php';
 ?>
 

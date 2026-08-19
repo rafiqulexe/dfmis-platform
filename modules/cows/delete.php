@@ -41,6 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Archive Animal';
+$page_breadcrumb = [['label' => 'Livestock', 'url' => 'index.php'], ['label' => 'Archive']];
 require_once '../../includes/header.php';
 ?>
 

@@ -47,6 +47,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Log Health Event';
+$page_breadcrumb = [['label' => 'Health', 'url' => 'index.php'], ['label' => 'Log Event']];
 require_once '../../includes/header.php';
 ?>
 

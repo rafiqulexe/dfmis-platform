@@ -31,6 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Add Animal';
+$page_breadcrumb = [['label' => 'Livestock', 'url' => 'index.php'], ['label' => 'Add Animal']];
 require_once '../../includes/header.php';
 ?>
 

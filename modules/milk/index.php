@@ -12,6 +12,8 @@ try {
     $productions = [];
 }
 
+$page_title = 'Milk Production';
+$page_breadcrumb = [['label' => 'Milk Production']];
 require_once '../../includes/header.php';
 ?>
 

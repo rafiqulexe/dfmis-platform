@@ -45,6 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Add Item';
+$page_breadcrumb = [['label' => 'Inventory', 'url' => 'index.php'], ['label' => 'Add Item']];
 require_once '../../includes/header.php';
 ?>
 

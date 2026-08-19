@@ -17,6 +17,8 @@ try {
     $error_message = safeError($e, "Database error");
 }
 
+$page_title = 'Livestock';
+$page_breadcrumb = [['label' => 'Livestock']];
 require_once '../../includes/header.php';
 ?>
 
@@ -135,3 +137,4 @@ function getHealthStatusClass($status) {
     }
 }
 ?> 
+<?php require_once '../../includes/footer.php'; ?>

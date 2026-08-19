@@ -22,6 +22,8 @@ try {
     $error_message = safeError($e, "Database error");
 }
 
+$page_title = 'Health';
+$page_breadcrumb = [['label' => 'Health']];
 require_once '../../includes/header.php';
 ?>
 

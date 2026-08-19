@@ -59,6 +59,8 @@ if ($production && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Edit Production';
+$page_breadcrumb = [['label' => 'Milk Production', 'url' => 'index.php'], ['label' => 'Edit']];
 require_once '../../includes/header.php';
 ?>
 

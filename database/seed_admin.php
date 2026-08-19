@@ -10,10 +10,23 @@ if (PHP_SAPI !== 'cli') {
     exit("This script must be run from the command line.\n");
 }
 
+// The legacy `role` column seeds the initial farm_users membership via
+// migration 003; farm_users.role is authoritative thereafter.
 $accounts = [
-    ['username' => 'admin',   'password' => 'admin123',   'role' => 'admin'],
-    ['username' => 'manager', 'password' => 'manager123', 'role' => 'veterinarian'],
-    ['username' => 'staff',   'password' => 'staff123',   'role' => 'staff'],
+    ['username' => 'admin',      'password' => 'admin123',      'role' => 'admin'],
+    ['username' => 'manager',    'password' => 'manager123',    'role' => 'veterinarian'],
+    ['username' => 'staff',      'password' => 'staff123',      'role' => 'staff'],
+    // Accountant and viewer exist so the two most restricted roles are
+    // actually exercisable — without them, role-aware navigation cannot be
+    // verified, since every other role can view every module.
+    ['username' => 'accountant', 'password' => 'accountant123', 'role' => 'staff'],
+    ['username' => 'viewer',     'password' => 'viewer123',     'role' => 'staff'],
+];
+
+// Farm-level roles that the legacy column cannot express.
+$farmRoleOverrides = [
+    'accountant' => 'accountant',
+    'viewer'     => 'viewer',
 ];
 
 $conn = getDBConnection();
@@ -29,4 +42,32 @@ foreach ($accounts as $account) {
     echo "Seeded {$account['username']} ({$account['role']})\n";
 }
 
-echo "Done. Demo passwords are the same as before (e.g. admin123) but now stored hashed.\n";
+// Ensure every demo account is a member of farm 1 with the intended
+// farm-level role. Idempotent, and only runs once migration 003 has
+// created the membership tables.
+$hasMembership = $conn->query("SHOW TABLES LIKE 'farm_users'")->fetchColumn();
+if ($hasMembership) {
+    $link = $conn->prepare(
+        "INSERT INTO farm_users (farm_id, admin_id, role) VALUES (1, ?, ?)
+         ON DUPLICATE KEY UPDATE role = VALUES(role)"
+    );
+    $lookup = $conn->prepare("SELECT admin_id FROM admin_users WHERE username = ?");
+
+    foreach ($accounts as $account) {
+        $lookup->execute([$account['username']]);
+        $adminId = $lookup->fetchColumn();
+        if (!$adminId) {
+            continue;
+        }
+        $farmRole = $farmRoleOverrides[$account['username']] ?? match ($account['role']) {
+            'admin' => 'farm_manager',
+            'veterinarian' => 'veterinarian',
+            'staff' => 'staff',
+            default => 'viewer',
+        };
+        $link->execute([$adminId, $farmRole]);
+        echo "  farm role: {$account['username']} -> {$farmRole}\n";
+    }
+}
+
+echo "Done. Demo passwords are unchanged (e.g. admin123) and stored hashed.\n";

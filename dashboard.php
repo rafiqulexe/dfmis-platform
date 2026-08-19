@@ -75,19 +75,24 @@ $weekDelta = $last30Avg > 0 ? (($last7Avg - $last30Avg) / $last30Avg) * 100 : 0;
 $weekDeltaClass = $weekDelta > 1 ? 'up' : ($weekDelta < -1 ? 'down' : 'flat');
 $weekDeltaSign = $weekDelta > 0 ? '+' : '';
 
+$page_title = 'Dashboard';
+$page_breadcrumb = [['label' => 'Dashboard']];
 require_once 'includes/header.php';
 ?>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<div class="dfms-page-header dfms-reveal" style="animation-delay:.02s;">
-    <p class="eyebrow">Good to see you, <?php echo htmlspecialchars($_SESSION['username']); ?></p>
-    <h1><?php echo htmlspecialchars($farmName); ?> — Command Center</h1>
-    <p><?php echo date('l, F j, Y'); ?> · here's what's happening across the farm today.</p>
+<div class="dfms-reveal" style="animation-delay:.02s;">
+    <?php dfms_page_header(
+        $farmName . ' — Command Center',
+        date('l, F j, Y') . " · here's what's happening across the farm today.",
+        '',
+        'Good to see you, ' . $_SESSION['username']
+    ); ?>
 </div>
 
 <?php if ($error_message): ?>
-    <div class="dfms-alert dfms-alert-error"><?php echo htmlspecialchars($error_message); ?></div>
+    <?php dfms_alert($error_message, 'error'); ?>
 <?php endif; ?>
 
 <!-- Farm Advisor -->
@@ -181,7 +186,7 @@ require_once 'includes/header.php';
                 <p>Is milk production improving?</p>
             </div>
         </div>
-        <div style="height:260px;">
+        <div class="dfms-chart">
             <canvas id="milkProductionChart" role="img" aria-label="Line chart of daily milk production over the last 30 days"></canvas>
         </div>
     </div>

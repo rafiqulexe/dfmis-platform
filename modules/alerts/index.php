@@ -17,6 +17,8 @@ try {
     $error_message = safeError($e, "Database error");
 }
 
+$page_title = 'Alerts';
+$page_breadcrumb = [['label' => 'Alerts']];
 require_once '../../includes/header.php';
 ?>
 
@@ -105,3 +107,4 @@ function getAlertTypeClass($type) {
     }
 }
 ?> 
+<?php require_once '../../includes/footer.php'; ?>

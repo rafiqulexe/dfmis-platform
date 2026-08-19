@@ -31,6 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Add Schedule';
+$page_breadcrumb = [['label' => 'Feeding', 'url' => 'index.php'], ['label' => 'Add Schedule']];
 require_once '../../includes/header.php';
 ?>
 

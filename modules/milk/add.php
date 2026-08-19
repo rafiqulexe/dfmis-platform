@@ -39,6 +39,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Record Production';
+$page_breadcrumb = [['label' => 'Milk Production', 'url' => 'index.php'], ['label' => 'Record']];
 require_once '../../includes/header.php';
 ?>
 

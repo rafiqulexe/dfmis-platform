@@ -102,6 +102,8 @@ if ($inventory && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$page_title = 'Update Stock';
+$page_breadcrumb = [['label' => 'Inventory', 'url' => 'index.php'], ['label' => 'Update Stock']];
 require_once '../../includes/header.php';
 ?>
 
