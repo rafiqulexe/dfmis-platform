@@ -15,6 +15,10 @@
 
 require_once __DIR__ . '/permissions.php';
 require_once __DIR__ . '/farm_types.php';
+// A nav item may be gated on a feature flag as well as a capability and a
+// permission (see dfms_nav_item_visible), so this is a hard dependency rather
+// than something the including page happens to have loaded first.
+require_once __DIR__ . '/features.php';
 
 // Each item may declare a `capability`. An item whose capability the active
 // farm does not have is hidden — that is how a future poultry farm stops
@@ -52,7 +56,14 @@ function dfms_nav_sections() {
         [
             'label' => 'Intelligence',
             'items' => [
-                ['key' => 'ai', 'label' => 'AI Assistant', 'url' => null, 'icon' => 'sparkle', 'permission' => null, 'status' => 'soon'],
+                // Phase 5D — built, so it is a real link rather than a 'soon'
+                // placeholder. Gated on BOTH the ai.consult permission and the
+                // ai_vet_assistant feature flag, so a farm that does not want
+                // an AI surface in its clinical workflow simply switches it off.
+                ['key' => 'ai', 'label' => 'AI Assistant', 'url' => 'modules/ai/', 'icon' => 'sparkle',
+                 'permission' => 'ai.consult', 'feature' => 'ai_vet_assistant'],
+                ['key' => 'ai_knowledge', 'label' => 'Knowledge Base', 'url' => 'modules/ai/knowledge.php', 'icon' => 'inbox',
+                 'permission' => 'ai.knowledge', 'feature' => 'ai_vet_assistant'],
             ],
         ],
         [
@@ -68,9 +79,20 @@ function dfms_nav_sections() {
 }
 
 // Should this nav item be shown at all on the active farm?
-// Capability first (does the farm do this?), then permission (may the user?).
+//
+// Three independent questions, cheapest first:
+//   capability — does this farm's business model include this? (farm type)
+//   feature    — has this farm/organization switched this feature on?
+//   permission — may THIS user do it?
+//
+// A feature flag is not an authorization check. It answers "is this surface
+// enabled here", which is why it sits beside capability rather than replacing
+// the permission test below — every endpoint still enforces its own permission.
 function dfms_nav_item_visible(array $item): bool {
     if (!empty($item['capability']) && !farmHasCapability($item['capability'])) {
+        return false;
+    }
+    if (!empty($item['feature']) && !dfms_feature_enabled($item['feature'])) {
         return false;
     }
     return $item['permission'] === null || hasPermission($item['permission']);

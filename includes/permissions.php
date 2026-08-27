@@ -116,6 +116,26 @@ const DFMS_PERMISSIONS = [
     'animal.lifecycle' => ['farm_manager', 'veterinarian'],
     'animal.transfer'  => ['farm_manager'],
 
+    // Phase 5D — AI Veterinarian Assistant.
+    //
+    // TWO new permissions, and only because no existing one expresses either
+    // decision. health.view is far too wide for the first (it includes viewer
+    // and grants read of the whole clinical record), and there is no existing
+    // permission at all for curating what the assistant is allowed to quote.
+    //
+    //   ai.consult   Asking the assistant a question. It SPENDS the
+    //                organization's metered AI allowance and returns clinical
+    //                decision support, so it is granted to the roles that
+    //                actually work with animals — not to viewer or accountant,
+    //                who have no clinical decision to support and would consume
+    //                a shared budget.
+    //   ai.knowledge Curating the knowledge base. Deliberately NARROWER than
+    //                consulting: whatever is written here is quoted back to
+    //                everyone who asks, so editing it shapes the advice the
+    //                whole farm receives. That is a farm-manager decision.
+    'ai.consult'       => ['farm_manager', 'veterinarian', 'staff'],
+    'ai.knowledge'     => ['farm_manager'],
+
     'settings.view'    => ['farm_manager', 'veterinarian', 'staff', 'accountant', 'viewer'],
     'settings.farm'    => ['farm_manager'],
     // Feature rollout at FARM scope. Organization scope is governed by

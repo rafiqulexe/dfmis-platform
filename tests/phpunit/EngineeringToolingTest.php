@@ -163,7 +163,10 @@ final class EngineeringToolingTest extends TestCase
 
         self::assertStringNotContainsString('sk-', $example, '.env.example must not contain an API key');
 
-        preg_match_all('/^(APP_|DB_|ANTHROPIC_)[A-Z_]+=(.*)$/m', $example, $matches, PREG_SET_ORDER);
+        // The prefix list must cover EVERY family of variable the app reads, or
+        // a newly added one escapes this scan entirely. AI_ was added in Phase
+        // 5D alongside the provider layer; DFMS_ covers the test-harness vars.
+        preg_match_all('/^(APP_|DB_|ANTHROPIC_|AI_|DFMS_)[A-Z_]+=(.*)$/m', $example, $matches, PREG_SET_ORDER);
         self::assertNotEmpty($matches, '.env.example must document the required variables');
 
         foreach ($matches as $match) {

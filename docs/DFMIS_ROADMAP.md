@@ -404,27 +404,82 @@ requiring an account per external vet would make the record unusable.*
 </details>
 
 ---
-## Phase 5 · AI Intelligence Engine
+## Phase 5 · AI Intelligence Engine — **5D COMPLETE**
 
-Activate `ai_service.php`, which is complete and currently unreachable.
+Phase 5 is delivered in parts. **5D (AI Veterinarian Assistant + RAG) is complete**;
+5A, 5B and 5C remain not started.
 
-- Wire `aiComplete()` into the application with plan gating and `ai_usage`
-  attribution already implemented
-- **Preserve `insights.php`.** The deterministic engine is the substrate; AI narrates
-  the same signals in natural language. It does not replace the computation and must
-  never invent a signal the data does not support.
+### 5D · AI Veterinarian Assistant + RAG — **COMPLETE**
+
+Commit `feat: implement AI veterinarian assistant and RAG foundation`. Migration 009.
+11 suites, 1445 assertions, PHPStan level 5 with an empty baseline.
+
+**Delivered** — see [`DFMIS_AI_ARCHITECTURE.md`](./DFMIS_AI_ARCHITECTURE.md)
+
+- **Provider layer.** `DfmsAiProvider` + `DfmsAnthropicProvider`. `ai_service.php`
+  previously curled a vendor endpoint from the middle of the accounting logic and
+  had **zero call sites**; the vendor call moved behind the interface and `aiChat()`
+  was added for multi-turn. The plan gate, `ai_usage` attribution and the
+  `['ok','text','reason']` contract are unchanged. Only one provider is implemented
+  — the one this deployment is configured for. A second is a new file.
+- **A real RAG foundation**, with sources, documents, chunks and retrieval as four
+  separate concerns. Chunking splits on paragraph boundaries; chunks are derived and
+  rebuilt on every save so they cannot drift from the document. Retrieval is InnoDB
+  `FULLTEXT` with a scored `LIKE` fallback — a real relevance-ranked index, **no
+  vector database**, and the path to embeddings is one function body.
+- **Nothing seeded.** DFMIS ships no veterinary content and the migration creates
+  none. A farm's knowledge base is its own protocols and material it chose to
+  transcribe.
+- **Animal-aware consultation** over the Phase 3/4 record, using only data the user is
+  already authorized to read. Four **labelled, never-merged** context blocks —
+  ANIMAL RECORD / HEALTH HISTORY / RETRIEVED KNOWLEDGE / USER-REPORTED — because a
+  recorded temperature and a stockperson's impression are not the same kind of claim.
+- **A medical safety layer enforced in code, not as a disclaimer.** A fixed system
+  prompt no caller can supply or override; **server-side urgency detection that runs
+  before and independently of the model** and prepends a veterinary-attention banner
+  whatever the model said; and honest degradation that never produces text mistakable
+  for advice.
+- **Conversations** farm- AND user-scoped, with citations in their own table so an
+  answer stays traceable to a titled document. No provider secrets, no request
+  metadata stored.
+- Two new permissions only (`ai.consult`, `ai.knowledge`) and a new `ai_vet_assistant`
+  feature flag, default ON. `future_ai_copilot` was deliberately left alone.
+- Read-only API: `/v1/ai-status` and `/v1/ai-conversations[/{id}]`. `/v1/health`
+  remains the public liveness probe, untouched.
+
+**`insights.php` is PRESERVED and untouched**, as this roadmap required. It remains the
+deterministic substrate; two tests assert it still works with no AI configured and that
+it contains no model call at all.
+
+**Real defects found and fixed:** `tenantQuery()` binds the farm id positionally, so a
+placeholder ahead of `{scope}` silently swapped the tenant filter and the full-text
+search — it failed closed, but the index was dead. The constraint is now documented on
+`tenantQuery()` and a test asserts FULLTEXT is actually reached. Also: a malformed
+optional resource id rendered 200 instead of 404, breaking the Phase 1 convention.
+
+**Not delivered, deliberately:** natural-language farm summaries, anomaly detection,
+predictive alerts, prompt versioning and response caching. Those are farm-intelligence
+features rather than veterinary decision support, and are carried forward below.
+
+**Exit criteria** — met for 5D: the assistant degrades cleanly with no API key and
+refuses to answer rather than fabricating; every call is attributed and plan-gated; no
+output is presented without its grounding data and its citations.
+
+### 5A · AI disease image detection — **NOT STARTED**
+### 5B · Animal image analysis — **NOT STARTED**
+### 5C · Predictive disease ML models — **NOT STARTED**
+
+No placeholder, stub or "coming soon" surface was created for any of these. What 5D
+leaves ready for them is described in §15 of the AI architecture document.
+
+### Carried forward from the original Phase 5 plan
+
 - Natural-language farm summaries grounded in real computed metrics
 - Anomaly detection: production drops, feed-conversion drift, health clusters
 - Predictive alerts with explicit confidence levels
 - Prompt versioning, response caching, cost telemetry per organization
-- Degraded-state rendering on every AI surface (already the documented contract)
-- Human-in-the-loop review for any AI output touching animal welfare
-
-**Exit criteria** — AI features degrade cleanly with no API key; every call is
-attributed and plan-gated; no AI output is presented without its grounding data.
 
 ---
-
 ## Phase 6 · AI Disease & Vision
 
 - Image ingestion for visual diagnosis — lameness, mastitis, body condition scoring,
@@ -640,19 +695,21 @@ becomes. Consider pulling the schema change forward into Phase 3.
 | 2C · Platform surfaces | **not started** | — |
 | 3 · Livestock Core & Animal Digital Twin | complete | `feat: establish livestock core and animal digital twin` |
 | 4 · Health & Veterinary | complete | `feat: implement veterinary health foundation` |
-| 5+ | not started | — |
+| 5D · AI Veterinarian Assistant + RAG | complete | `feat: implement AI veterinarian assistant and RAG foundation` |
+| 5A / 5B / 5C · AI vision & prediction | not started | — |
+| 6+ | not started | — |
 
-Test suite: **1159 assertions across 10 suites, all passing** (`bash tests/run_all.sh`).
+Test suite: **1445 assertions across 11 suites, all passing** (`bash tests/run_all.sh`).
 Static analysis: **PHPStan level 5, zero findings, empty baseline**.
-Schema at migration **008**.
+Schema at migration **009**.
 
-**Phase 5 (AI Intelligence Engine) is unblocked.** The structured, coded and
+**Phase 5D is complete; 5A/5B/5C and Phase 6 remain.** The structured, coded and
 provenance-complete clinical record it needs now exists, and it represents
 uncertainty explicitly — `suspected` / `ruled_out`, `outcome: unknown`, absent
 confidence stored as NULL — so a model reads what was actually known rather than
 a flattened certainty.
 
-Three items are worth weighing before Phase 5:
+Three items are worth weighing before the next phase:
 
 1. **Per-animal production data still does not exist**, and Phase 4 has now hit
    it directly. `milk_production` remains a farm-level daily total with no animal
@@ -667,7 +724,7 @@ Three items are worth weighing before Phase 5:
 3. **Organization member management** (Phase 2C). Organization roles can still
    only be set by seeding, which makes onboarding a second real customer manual.
 
-None blocks Phase 5.
+None blocks the remaining Phase 5 work.
 
 ### Sequencing note carried forward
 

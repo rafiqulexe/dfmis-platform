@@ -45,6 +45,15 @@ const DFMS_TENANT_TABLES = [
     // medication administration resolves an item id arriving from a form, which
     // needs the scoped tenantFind() path.
     'inventory_items',
+    // Phase 5D — AI veterinary assistant and its RAG knowledge base. Every one
+    // carries farm_id.
+    //
+    // NOTE: `ai_usage` is deliberately ABSENT. It is ORGANIZATION-scoped with a
+    // nullable farm_id (migration 003) and is written through aiChat()'s own
+    // accounting path, not the tenant repository. Listing it here would invite
+    // a farm-scoped read of a table whose rows legitimately have no farm.
+    'ai_knowledge_sources', 'ai_knowledge_documents', 'ai_knowledge_chunks',
+    'ai_conversations', 'ai_messages', 'ai_message_sources',
 ];
 
 // Identifiers we will interpolate into SQL must be provably safe, because no
@@ -60,6 +69,25 @@ function dfms_assert_identifier($value, $what = 'identifier') {
 // Run a SELECT with the active farm automatically applied.
 // $sql must contain the literal token {scope}, e.g.
 //   tenantQuery($conn, "SELECT * FROM cows WHERE {scope} ORDER BY unique_id")
+//
+// ---------------------------------------------------------------------------
+// CONSTRAINT: {scope} MUST BE THE FIRST PLACEHOLDER IN THE STATEMENT.
+//
+// The farm id is bound POSITIONALLY as parameter #1 (see the array_merge
+// below), so any `?` appearing earlier in the SQL text than {scope} silently
+// receives the farm id, and {scope} receives that caller's first value.
+//
+// In practice this means: never put a placeholder in the SELECT list, or in a
+// JOIN condition, ahead of the WHERE clause. Phase 5D hit exactly this with a
+// `MATCH(...) AGAINST (?)` relevance column, which handed the farm id to the
+// full-text search and the search string to the tenant filter.
+//
+// It fails CLOSED — a string coerces to farm_id 0 and matches nothing, so no
+// cross-tenant row is ever returned — but the query silently stops doing what
+// it looks like it does. If a leading placeholder is unavoidable, either move
+// the value into the WHERE clause or prove it safe and inline it, as
+// includes/ai_knowledge.php documents.
+// ---------------------------------------------------------------------------
 function tenantQuery(PDO $conn, $sql, array $params = [], $alias = '') {
     $farmId = currentFarmId();
     if ($farmId === null) {

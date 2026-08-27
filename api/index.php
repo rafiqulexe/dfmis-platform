@@ -146,6 +146,30 @@ $routes = [
         // Serves /v1/health-cases and /v1/health-cases/{case id}.
         'accepts_id' => true,
     ],
+
+    // ---- Phase 5D: AI Veterinarian Assistant -------------------------------
+    //
+    // Both READ-ONLY and both authenticated. Asking a question is a POST to
+    // the HTML module; the API has been read-only since Phase 2B and this
+    // phase does not change that, so no speculative write surface is created.
+    //
+    // ai-status is NOT public. /v1/health already serves as the unauthenticated
+    // liveness probe; whether an organization has AI configured and how much
+    // allowance it has left is tenant business information.
+    '/v1/ai-status' => [
+        'methods'    => ['GET'],
+        'handler'    => __DIR__ . '/v1/ai-status.php',
+        'auth'       => true,
+        'permission' => 'ai.consult',
+    ],
+    '/v1/ai-conversations' => [
+        'methods'    => ['GET'],
+        'handler'    => __DIR__ . '/v1/ai-conversations.php',
+        'auth'       => true,
+        'permission' => 'ai.consult',
+        // Serves /v1/ai-conversations and /v1/ai-conversations/{id}.
+        'accepts_id' => true,
+    ],
 ];
 
 // Route resolution: exact match first.

@@ -53,6 +53,21 @@ require_once __DIR__ . '/tenant.php';
  * everywhere until someone deliberately switches it on.
  */
 const DFMS_FEATURE_REGISTRY = [
+    // Phase 5D — BUILT, so it defaults to ON, exactly like multi_farm_switching
+    // below. The "future_*" flags default to false because they are unbuilt;
+    // this one is real and a farm can switch it OFF if it does not want an AI
+    // surface in its clinical workflow.
+    //
+    // Deliberately NOT reusing `future_ai_copilot`: that entry describes a
+    // Phase 7 conversational assistant over ALL farm data, four existing tests
+    // assert it is unbuilt and default-off, and quietly redefining it would
+    // make both this feature and that roadmap entry harder to reason about.
+    'ai_vet_assistant' => [
+        'label'       => 'AI Veterinarian Assistant',
+        'description' => 'Veterinary decision support over the farm\'s own health records and knowledge base. Phase 5D.',
+        'default'     => true,
+        'phase'       => 5,
+    ],
     'future_ai_copilot' => [
         'label'       => 'AI Copilot',
         'description' => 'Conversational assistant over farm data. Phase 7 — not implemented.',
