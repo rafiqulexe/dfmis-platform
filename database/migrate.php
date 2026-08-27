@@ -107,6 +107,22 @@ foreach ($files as $file) {
             }
         } else {
             $sql = file_get_contents($file);
+
+            // Strip any `USE <database>;` statement.
+            //
+            // A migration must apply to the CONNECTED database and nothing
+            // else. Migrations 002-004 open with `USE dfms;`, which would
+            // silently redirect the whole file at the development database
+            // even when the runner was deliberately pointed at another one —
+            // exactly how a test run destroys real data. The connection
+            // already selects the correct schema; honouring an embedded USE
+            // can only ever be wrong.
+            $stripped = preg_replace('/^[ \t]*USE\s+[`"\']?[A-Za-z0-9_]+[`"\']?\s*;[ \t]*$/mi', '', $sql);
+            if ($stripped !== null && $stripped !== $sql) {
+                echo "  note: ignored an embedded USE statement (migrations apply to the connected database)\n";
+                $sql = $stripped;
+            }
+
             $conn->exec($sql);
             echo "  executed raw SQL\n";
         }

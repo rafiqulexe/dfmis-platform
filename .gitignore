@@ -11,9 +11,17 @@ Thumbs.db
 .claude/scheduled_tasks.lock
 .claude/skills/
 
-# Dependencies (introduced later for PDF/Excel export)
+# Composer dependencies. composer.lock IS committed (this is an application,
+# not a library — every environment must resolve identical versions), but the
+# installed tree is rebuilt from it and never stored.
 vendor/
 node_modules/
+
+# Tooling caches and analysis artifacts
+.phpunit.cache/
+.phpunit.result.cache
+.php-cs-fixer.cache
+/tools/*.phar
 
 # Local scratch
 *.log

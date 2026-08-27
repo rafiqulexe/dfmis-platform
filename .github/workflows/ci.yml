@@ -1,0 +1,169 @@
+# ============================================================================
+# DFMIS Continuous Integration
+#
+# Runs every quality gate the project has. It is written to be correct when the
+# repository is eventually pushed — nothing here runs today, because DFMIS is
+# deliberately local-only for now.
+#
+# DESIGN PRINCIPLE: FAIL, NEVER SILENTLY SKIP.
+#
+# The HTTP suites need a running web server and a migrated database. This
+# workflow starts both EXPLICITLY and waits for them. If either fails to come
+# up, the job fails — it does not fall through to a green build having quietly
+# run only the unit tests. tests/run_all.sh already exits non-zero when no
+# server is reachable, and that behaviour is relied on here rather than worked
+# around.
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  workflow_dispatch:
+
+# A newer push on the same branch cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint, analyse and test
+    runs-on: ubuntu-latest
+
+    services:
+      # MariaDB rather than MySQL: migrations 002-004 are raw SQL written
+      # against MariaDB. The PHP migrations (005, 006) are engine-agnostic by
+      # design, but the baseline files are not.
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+          MARIADB_DATABASE: dfms
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_USER: root
+      DB_PASS: ci_root_password
+      DB_NAME: dfms
+      DB_CHARSET: utf8mb4
+      APP_ENV: testing
+      APP_ALLOWED_HOSTS: localhost,localhost:8000,127.0.0.1,127.0.0.1:8000
+      DFMS_BASE_URL: http://localhost:8000
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          # zip is required by Composer; pdo_mysql and mbstring by the app.
+          extensions: pdo_mysql, mbstring, zip, curl, json
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      # ---- static checks: no server or database needed --------------------
+
+      - name: Lint (php -l across every file)
+        run: php tools/lint.php --quiet
+
+      - name: Static analysis (PHPStan)
+        run: php vendor/bin/phpstan analyse --no-progress --memory-limit=512M
+
+      # ---- database ---------------------------------------------------------
+
+      - name: Wait for MariaDB
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -u root -p"$DB_PASS" --silent 2>/dev/null; then
+              echo "MariaDB is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "MariaDB did not become ready" >&2
+          exit 1
+
+      - name: Import baseline schema
+        run: mysql -h 127.0.0.1 -u root -p"$DB_PASS" dfms < database.sql
+
+      - name: Run migrations
+        run: php database/migrate.php
+
+      - name: Verify migrations are idempotent
+        # A second run must be a no-op. If it applies anything, a migration is
+        # not idempotent and would break a redeploy.
+        run: |
+          output=$(php database/migrate.php)
+          echo "$output"
+          echo "$output" | grep -q "Nothing to apply" || {
+            echo "Migrations are not idempotent" >&2
+            exit 1
+          }
+
+      - name: Seed demo and fixture data
+        run: |
+          php database/seed_admin.php
+          php database/seed_demo_data.php
+
+      - name: Create the isolated test database
+        # PHPUnit runs against dfms_test, never the schema the HTTP suites use.
+        run: php tools/test-db.php --create
+
+      # ---- unit tests: still no server needed ------------------------------
+
+      - name: PHPUnit
+        run: php vendor/bin/phpunit --colors=never
+
+      # ---- integration: server started EXPLICITLY --------------------------
+
+      - name: Start the application server
+        run: |
+          php -S localhost:8000 -t . > /tmp/dfms-server.log 2>&1 &
+          echo $! > /tmp/dfms-server.pid
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://localhost:8000/index.php; then
+              echo "Server is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "Server failed to start:" >&2
+          cat /tmp/dfms-server.log >&2
+          exit 1
+
+      - name: Full test suite
+        # run_all.sh runs lint, both unit suites and all four HTTP suites, and
+        # exits non-zero if the server is unreachable rather than skipping.
+        run: bash tests/run_all.sh
+
+      - name: Server log on failure
+        if: failure()
+        run: cat /tmp/dfms-server.log || true
+
+      - name: Stop the application server
+        if: always()
+        run: kill "$(cat /tmp/dfms-server.pid)" 2>/dev/null || true

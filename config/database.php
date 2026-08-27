@@ -172,6 +172,15 @@ function getDBConnection()
         return $conn;
     } catch (PDOException $e) {
         error_log('Database connection failed: ' . $e->getMessage());
+
+        // On the command line, exit with a NON-ZERO status. `exit("string")`
+        // prints the string and exits 0, which would make a migration run or a
+        // CI job report success after failing to reach the database at all.
+        if (PHP_SAPI === 'cli') {
+            fwrite(STDERR, "Database connection failed. Check DB_HOST / DB_NAME / credentials.\n");
+            exit(1);
+        }
+
         // No detail to the user — the message must not reveal host, user or
         // schema names.
         if (function_exists('dfms_abort')) {

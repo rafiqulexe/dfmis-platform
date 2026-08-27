@@ -165,27 +165,71 @@ Commit `feat: establish international platform foundation`. Migration 006.
 See [`DFMIS_INTERNATIONAL_ARCHITECTURE.md`](./DFMIS_INTERNATIONAL_ARCHITECTURE.md)
 and [`DFMIS_SAAS_FOUNDATION.md`](./DFMIS_SAAS_FOUNDATION.md).
 
-### 2B · Platform & API structure — **NOT STARTED**
+### 2B · Platform Engineering Foundation — **COMPLETE**
 
-Still outstanding from the original Phase 2 scope:
+Commit `chore: establish platform engineering foundation`.
+8 suites, 575 assertions, PHPStan level 5 with an empty baseline.
 
-- Engineering foundation carried over from Phase 1.6: **Composer + PSR-4
-  autoloading, PHPUnit, PHPStan, CI**. Still the largest structural gap.
-- Application skeleton: front controller, routing, service layer. Existing
-  procedural pages migrate incrementally behind the router, never big-bang.
-- **HTTP API layer** — versioned JSON endpoints (`/api/v1/`), token
-  authentication, consistent error envelope, rate limiting, OpenAPI spec.
-  Prerequisite for Phases 7 and 11.
+**Delivered**
+
+- **Composer** — 2 dev dependencies only (PHPUnit, PHPStan), zero runtime
+  dependencies, `composer.lock` committed. Autoloading deliberately near-empty:
+  the application still uses `require_once` and was not converted to PSR-4.
+- **PHPUnit** — 37 tests / 102 assertions covering the HTTP foundation, API
+  route-table invariants, the test-database guard and the tooling config. The
+  four legacy suites are untouched and still run.
+- **PHPStan level 5, empty baseline** — the level chosen from a measured sweep
+  (level 6's extra 274 findings are pure typehint reporting, not a bug class).
+  All 14 findings present at introduction were **fixed, not suppressed**.
+- **Test environment isolation** — `dfms_test` built from the real baseline and
+  migrations; a positive-evidence guard that treats missing configuration as
+  refusal. This uncovered a genuine hazard: migrations 002–004 open with
+  `USE dfms;` and would have modified the development database when run against
+  the test one. The runner now strips embedded `USE` statements.
+- **CI** — `.github/workflows/ci.yml` running lint, PHPStan, migrations plus an
+  **idempotency check**, PHPUnit and the full suite, with a web server started
+  explicitly so the HTTP suites cannot silently skip.
+- **HTTP foundation** — `includes/http.php`: request inspection, JSON body
+  parsing, `data`/`error` envelopes, method enforcement, correlation ids.
+- **API foundation** — `/api/v1/` behind an API-only front controller with an
+  explicit route allow-list. Three endpoints (`health`, `me`, `settings`).
+  Reuses `requireAuth()` verbatim; no parallel authorization exists.
+- **Quality commands** — `composer lint | analyse | test:unit | check`.
+- Documentation: `DFMIS_DEVELOPMENT_GUIDE.md`, `DFMIS_API_ARCHITECTURE.md`,
+  `DFMIS_ENGINEERING_FOUNDATION.md`.
+
+**Two latent defects fixed along the way:** `getDBConnection()` failed via
+`exit("message")`, which exits with status **0** — a database failure would have
+looked like success to CI; and `footer.php` used ten variables it never defined,
+the same class of fault as baseline finding C-1.
+
+**Deliberately NOT delivered** (deferred with reasons in
+[`DFMIS_ENGINEERING_FOUNDATION.md`](./DFMIS_ENGINEERING_FOUNDATION.md) §8):
+
+- **PSR-4 conversion of the application.** Out of scope by instruction — it is a
+  rewrite. Composer autoloading is present but near-empty by design.
+- **A general front controller.** Confined to `/api/`; all 25 HTML pages remain
+  directly reachable and unmodified.
+- **Token/API-key authentication, rate limiting, pagination conventions, OpenAPI,
+  CORS, write endpoints.** The API is a foundation, not a public API.
+- **Full test isolation for suites 4–8** — they still use the development
+  database; only PHPUnit is isolated.
+- **Module pages in static analysis** — shared layers only.
+
+### 2C · Platform surfaces — **NOT STARTED**
+
+Remaining from the original Phase 2 scope, none of which Phase 2B claimed:
+
 - Platform admin console, and the T-6 privilege gap it depends on.
 - Tenant onboarding: organization signup, farm provisioning, user invitation.
-  **Organization member management** is a concrete near-term gap — org roles can
-  currently only be set by seeding.
-- Structured logging, health checks, error tracking.
+  **Organization member management** is the concrete near-term gap — org roles
+  can currently only be set by seeding.
+- Structured logging and error tracking (health checks now exist via
+  `/api/v1/health`).
 - Finish the design-system migration and drop the Tailwind Play CDN (**F-1, F-2**).
 
-**Exit criteria for 2B** — a second organization can be onboarded end-to-end
-without manual SQL; API v1 documented and authenticated; isolation suite extended
-to cover the API.
+**Exit criteria for 2C** — a second organization can be onboarded end-to-end
+without manual SQL.
 
 ---
 
@@ -457,20 +501,38 @@ becomes. Consider pulling the schema change forward into Phase 3.
 |---|---|---|
 | 0 · Baseline | complete | `50277c8` |
 | 1 · Foundation Hardening | complete | `ae249b9` |
-| 2A · International foundation | complete | `feat: establish international platform foundation` |
-| 2B · Platform & API structure | **not started** | — |
+| 2A · International foundation | complete | `78b25ac` |
+| 2B · Platform Engineering Foundation | complete | `chore: establish platform engineering foundation` |
+| 2C · Platform surfaces | **not started** | — |
 | 3+ | not started | — |
 
-Test suite: **412 assertions across 6 suites, all passing** (`bash tests/run_all.sh`).
+Test suite: **575 assertions across 8 suites, all passing** (`bash tests/run_all.sh`).
+Static analysis: **PHPStan level 5, zero findings, empty baseline**.
 Schema at migration **006**.
 
-The immediate next action is **Phase 2B**, and within it the engineering
-foundation — Composer, PSR-4 autoloading, PHPUnit, PHPStan and CI — which has now
-been deferred twice. Every subsequent phase compounds without it: there is still
-no automated gate preventing a tenancy regression from reaching a branch, and
-`php -l` cannot catch the class of type error that caused baseline finding C-1.
+**Phase 3 is now unblocked.** The engineering gate that had been deferred twice —
+a real test framework, static analysis and a CI pipeline — is in place, and the
+API foundation later phases attach to exists and is tested for tenant isolation.
 
-Phase 3 should not begin until 2B's testing and autoloading work lands.
+Before Phase 3 begins, two items are worth weighing:
+
+1. **Test isolation for suites 4–8.** They still run against the development
+   database. Phase 3 adds substantially more data-mutating tests, so the cost of
+   deferring this rises with every phase.
+2. **Organization member management** (Phase 2C). Organization roles can only be
+   set by seeding, which makes onboarding a second real customer manual.
+
+Neither blocks Phase 3, but both get more expensive the longer they wait.
+
+### Sequencing note carried forward
+
+Phase 12 (Internationalization) is **substantially de-risked** by Phase 2A: the
+configuration hierarchy, timezone strategy, currency handling, unit conversion,
+`utf8mb4` and the translation mechanism all now exist. What remains for Phase 12
+is breadth — externalizing the strings still inline in module templates, RTL
+layout, and locale-aware date patterns — rather than architecture. Each phase
+from here should externalize its own strings as it writes them, so Phase 12 does
+not become a single enormous sweep.
 
 ### Sequencing note carried forward
 

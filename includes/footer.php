@@ -3,6 +3,21 @@
 // APPLICATION SHELL — bottom half: closes the content region, then renders
 // the mobile drawer, bottom navigation, command palette and toast region.
 // ============================================================================
+
+// These are normally set by header.php, which every page includes first.
+// Defaulting them here makes this file self-sufficient rather than silently
+// emitting undefined-variable notices if it is ever reached without the
+// header — the "undefined variable" class that static analysis flagged, and
+// the same class of latent fault as baseline finding C-1.
+$dfms_org_name      = $dfms_org_name      ?? '';
+$dfms_farm_name     = $dfms_farm_name     ?? '';
+$dfms_username      = $dfms_username      ?? '';
+$dfms_role_label    = $dfms_role_label    ?? '';
+$dfms_unread_alerts = $dfms_unread_alerts ?? 0;
+$dfms_active        = $dfms_active        ?? '';
+$dfms_nav           = $dfms_nav           ?? [];
+$dfms_bottom        = $dfms_bottom        ?? [];
+
 if (isLoggedIn()):
 ?>
             </main>

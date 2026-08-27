@@ -1,0 +1,46 @@
+{
+    "name": "dfmis/platform",
+    "description": "DFMIS — Dairy Farm Management Information System. Multi-tenant farm management platform.",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "phpstan/phpstan": "^1.12"
+    },
+    "autoload": {
+        "files": []
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "DFMIS\\Tests\\": "tests/phpunit/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": false,
+        "platform": {
+            "php": "8.2.12"
+        }
+    },
+    "scripts": {
+        "lint": "@php tools/lint.php",
+        "analyse": "@php vendor/bin/phpstan analyse --memory-limit=512M",
+        "test:unit": "@php vendor/bin/phpunit",
+        "test:legacy": "bash tests/run_all.sh",
+        "check": [
+            "@lint",
+            "@analyse",
+            "@test:unit"
+        ]
+    },
+    "scripts-descriptions": {
+        "lint": "php -l across every PHP file (no dependencies required)",
+        "analyse": "PHPStan static analysis of includes/, config/ and tools/",
+        "test:unit": "PHPUnit suite — new tests only; see docs/DFMIS_ENGINEERING_FOUNDATION.md",
+        "test:legacy": "The full pre-existing harness: lint + 4 bespoke suites + PHPUnit",
+        "check": "Everything that does not need a running web server or database"
+    }
+}

@@ -59,12 +59,21 @@ if ($hasMembership) {
         if (!$adminId) {
             continue;
         }
-        $farmRole = $farmRoleOverrides[$account['username']] ?? match ($account['role']) {
-            'admin' => 'farm_manager',
+        // A lookup rather than a match with a `default` arm: every role used in
+        // $accounts above is mapped here, so a fallback would be unreachable
+        // dead code (reported by static analysis).
+        //
+        // Indexing directly is also the better behaviour for a seeding script:
+        // if someone adds a legacy role and forgets to map it, this fails
+        // loudly during seeding rather than silently granting 'viewer' and
+        // leaving a wrongly-permissioned account behind.
+        $legacyRoleToFarmRole = [
+            'admin'        => 'farm_manager',
             'veterinarian' => 'veterinarian',
-            'staff' => 'staff',
-            default => 'viewer',
-        };
+            'staff'        => 'staff',
+        ];
+        $farmRole = $farmRoleOverrides[$account['username']]
+            ?? $legacyRoleToFarmRole[$account['role']];
         $link->execute([$adminId, $farmRole]);
         echo "  farm role: {$account['username']} -> {$farmRole}\n";
     }

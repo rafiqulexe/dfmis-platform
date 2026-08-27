@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    PHPUnit configuration.
+
+    SCOPE (see docs/DFMIS_ENGINEERING_FOUNDATION.md)
+
+    PHPUnit covers NEW, pure unit tests only. The four pre-existing suites are
+    untouched and still run through tests/run_all.sh — migrating ~400 working
+    assertions into PHPUnit would be churn with no behavioural benefit, and the
+    brief explicitly warns against it.
+
+    HTTP integration tests deliberately stay in the shell suites. Those need a
+    running web server, and this project's philosophy is to FAIL rather than
+    skip when the server is absent. PHPUnit's natural idiom is markTestSkipped,
+    which is exactly the silent-green failure mode to avoid, so the two kinds of
+    test are kept in the harness suited to each.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         failOnWarning="true"
+         failOnRisky="true"
+         failOnNotice="true"
+         beStrictAboutOutputDuringTests="true"
+         beStrictAboutTestsThatDoNotTestAnything="true"
+         cacheDirectory=".phpunit.cache">
+
+    <testsuites>
+        <testsuite name="unit">
+            <directory>tests/phpunit</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory>includes</directory>
+            <directory>api</directory>
+            <directory>tools</directory>
+        </include>
+    </source>
+
+    <php>
+        <!-- Tests must never reach the development database. tests/bootstrap.php
+             enforces this for anything destructive; this makes the intent
+             explicit for the whole suite. -->
+        <env name="DFMS_ENV" value="testing"/>
+        <env name="DB_NAME" value="dfms_test"/>
+        <env name="APP_ENV" value="testing"/>
+    </php>
+</phpunit>

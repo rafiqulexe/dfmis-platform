@@ -97,7 +97,9 @@ function storeUploadedImage(array $file, $category, array $link = []) {
 
     // Trust the file's actual content, never the client-supplied type or name.
     $info = @getimagesize($file['tmp_name']);
-    $mime = is_array($info) ? ($info['mime'] ?? '') : '';
+    // getimagesize() returns false on failure; when it returns an array, 'mime'
+    // is always present, so no inner null-coalesce is needed.
+    $mime = is_array($info) ? $info['mime'] : '';
     if (!isset(DFMS_ALLOWED_IMAGE_TYPES[$mime])) {
         throw new RuntimeException('Only JPEG, PNG or WebP images are accepted.');
     }

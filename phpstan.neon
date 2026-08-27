@@ -1,0 +1,73 @@
+# ============================================================================
+# PHPStan configuration
+#
+# STRATEGY (see docs/DFMIS_ENGINEERING_FOUNDATION.md)
+#
+# DFMIS is procedural PHP with no autoloader. PHPStan is therefore pointed at
+# the shared layers — includes/, config/, database/, tools/ — where the logic
+# that every module depends on actually lives, and where a type error does the
+# most damage. Module pages are template-heavy and mix HTML with logic; adding
+# them now would produce a very large baseline that nobody reads, which is the
+# failure mode this configuration is designed to avoid.
+#
+# Level 5 is the honest ceiling here, chosen from a measured sweep:
+#   level 3 -> 10 findings   level 5 -> 14   level 6 -> 288   level 7 -> 298
+# The jump at level 6 is ENTIRELY missing-typehint reporting ("no value type
+# specified in iterable type array"), not a new bug class. Level 6 is level 5
+# plus typehints, so raising the level and then disabling its only added check
+# would be theatre. Level 5 already covers every class that matters here:
+# undefined variables, invalid arguments, wrong return assumptions, impossible
+# types, dead code and null errors — the class behind baseline finding C-1.
+#
+# Pre-existing findings are captured in phpstan-baseline.neon so that NEW code
+# is held to the full level while legacy findings stay visible and countable
+# rather than being suppressed by broad ignore rules.
+# ============================================================================
+
+includes:
+    - phpstan-baseline.neon
+
+parameters:
+    level: 5
+
+    paths:
+        - includes
+        - config
+        - database
+        - tools
+        - api
+
+    # Files that DEFINE functions used by the analysed paths but are not
+    # themselves analysed as entry points. Without this, PHPStan reports every
+    # cross-file call in a codebase that has no autoloader as an unknown
+    # function.
+    scanDirectories:
+        - modules
+        - lang
+
+    scanFiles:
+        - dashboard.php
+        - index.php
+        - logout.php
+
+    # Migrations return closures and are executed by the runner, never included
+    # for their declarations; analysing them as libraries produces noise about
+    # unused returns rather than real findings.
+    excludePaths:
+        analyseAndScan:
+            - vendor
+            - storage
+            - .claude
+
+    # PHP version the code actually runs on, so PHPStan reasons about the right
+    # standard library signatures and deprecations.
+    phpVersion: 80212
+
+    # Report anything PHPStan cannot verify rather than assuming it is fine.
+    treatPhpDocTypesAsCertain: false
+    reportUnmatchedIgnoredErrors: true
+
+    # DFMIS-specific: these globals are established by the shell and session
+    # bootstrap before any module runs.
+    bootstrapFiles:
+        - tools/phpstan-bootstrap.php

@@ -207,6 +207,13 @@ function requireTenantContext() {
     if (currentFarmId() !== null) {
         return true;
     }
+
+    // Same decision, presented for the caller's content type. An API client
+    // gets the standard JSON error envelope rather than an HTML page.
+    if (function_exists('dfms_response_mode') && dfms_response_mode() === 'json') {
+        dfms_abort(403, 'No tenant context for user ' . (currentUserId() ?? '?'));
+    }
+
     if (!headers_sent()) {
         http_response_code(403);
         header('Content-Type: text/html; charset=utf-8');

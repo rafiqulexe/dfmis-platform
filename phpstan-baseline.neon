@@ -1,0 +1,10 @@
+# PHPStan baseline.
+#
+# INTENTIONALLY EMPTY.
+#
+# All 14 findings present when static analysis was introduced (Phase 2B) were
+# FIXED rather than suppressed — see docs/DFMIS_ENGINEERING_FOUNDATION.md.
+# Analysis therefore starts from zero, and any entry added here later is a
+# deliberate, reviewable deferral rather than an inherited backlog.
+parameters:
+    ignoreErrors: []

@@ -78,6 +78,43 @@ function dfms_render_error_page($status = 500) {
        . '</div></body></html>';
 }
 
+// ---------------------------------------------------------------------------
+// Response mode.
+//
+// Phase 2B: the API needs aborts to render JSON rather than an HTML page. The
+// authorization DECISION stays in exactly one place (permissions.php); only
+// how a refusal is PRESENTED varies. Duplicating the decision per surface is
+// what this deliberately avoids.
+//
+// api/index.php sets 'json' once at the top of an API request. Everything else
+// keeps the default and is unaffected.
+// ---------------------------------------------------------------------------
+function dfms_response_mode(?string $set = null): string {
+    static $mode = 'html';
+    if ($set !== null) {
+        $mode = $set === 'json' ? 'json' : 'html';
+    }
+    return $mode;
+}
+
+function dfms_set_response_mode(string $mode): void {
+    dfms_response_mode($mode);
+}
+
+// Maps an HTTP status to the API's machine-readable error code, so an abort
+// reaching an API client carries the same contract as a deliberate http_error().
+function dfms_status_error_code(int $status): string {
+    return [
+        400 => 'BAD_REQUEST',
+        401 => 'UNAUTHENTICATED',
+        403 => 'FORBIDDEN',
+        404 => 'NOT_FOUND',
+        405 => 'METHOD_NOT_ALLOWED',
+        413 => 'PAYLOAD_TOO_LARGE',
+        422 => 'VALIDATION_ERROR',
+    ][$status] ?? 'INTERNAL_ERROR';
+}
+
 // Ends the request with a safe status page. Use instead of exit('...') so
 // every abort path looks the same and is logged consistently.
 function dfms_abort($status, $logMessage = null) {
@@ -89,6 +126,31 @@ function dfms_abort($status, $logMessage = null) {
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
+
+    if (dfms_response_mode() === 'json') {
+        $messages = [
+            400 => 'That request could not be understood.',
+            401 => 'Authentication required.',
+            403 => 'You do not have permission to do that.',
+            404 => 'Not found.',
+            405 => 'Method not allowed.',
+            413 => 'That payload is too large.',
+        ];
+        if (!headers_sent()) {
+            http_response_code($status);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store, private');
+            header('X-Content-Type-Options: nosniff');
+            header('X-Request-Id: ' . dfms_request_id());
+        }
+        echo json_encode(['error' => [
+            'code'           => dfms_status_error_code((int) $status),
+            'message'        => $messages[$status] ?? 'An unexpected error occurred.',
+            'correlation_id' => dfms_request_id(),
+        ]], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
     dfms_render_error_page($status);
     exit;
 }

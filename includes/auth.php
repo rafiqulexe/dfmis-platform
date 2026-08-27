@@ -21,7 +21,9 @@ if (session_status() === PHP_SESSION_NONE) {
     // Cookie path derives from BASE_URL so a subdirectory mount (XAMPP
     // htdocs) sets and clears the same cookie rather than two different ones.
     $dfms_path = parse_url(BASE_URL, PHP_URL_PATH) ?: '/';
-    if ($dfms_path === '' || $dfms_path[strlen($dfms_path) - 1] !== '/') {
+    // The ?: above already guarantees a non-empty string, so an === '' check
+    // here would be dead code (reported by static analysis).
+    if (substr($dfms_path, -1) !== '/') {
         $dfms_path .= '/';
     }
 
@@ -199,7 +201,8 @@ function dfms_clear_session() {
             'domain'   => $params['domain'],
             'secure'   => $params['secure'],
             'httponly' => $params['httponly'],
-            'samesite' => $params['samesite'] ?? 'Lax',
+            // session_get_cookie_params() always returns samesite on PHP 7.3+.
+            'samesite' => $params['samesite'],
         ]);
     }
 
