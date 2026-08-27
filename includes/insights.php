@@ -17,6 +17,8 @@ function alertTargetLink($entityType, $entityId) {
     switch ($entityType) {
         case 'cow':
             return 'modules/cows/view.php?id=' . (int) $entityId;
+        case 'inventory_item':
+            return 'modules/inventory/';
         default:
             return 'modules/alerts/';
     }
@@ -24,7 +26,15 @@ function alertTargetLink($entityType, $entityId) {
 
 // Structured insight cards for the dashboard's Farm Advisor panel.
 // Each has severity, title, why/impact/action, and a link to act on it.
-function getFarmAdvisorInsights(PDO $conn, int $farmId): array {
+function getFarmAdvisorInsights(PDO $conn, ?int $farmId): array {
+    // Baseline audit C-1: this parameter was a non-nullable int, and
+    // currentFarmId() returns null for a user with no farm membership — which
+    // crashed the dashboard with a TypeError that leaked the server path.
+    // Callers are now gated by requireAuth(); this is defence in depth.
+    if ($farmId === null) {
+        return [];
+    }
+
     $insights = [];
 
     // ---- Milk production trend ----
@@ -101,9 +111,9 @@ function getFarmAdvisorInsights(PDO $conn, int $farmId): array {
 
     // ---- Inventory ----
     $stmt = $conn->prepare("
-        SELECT i.item_name, l.quantity, i.unit
-        FROM inventory_items i JOIN inventory_levels l ON i.item_id = l.item_id
-        WHERE i.farm_id = ? AND l.quantity <= 10
+        SELECT i.item_name, l.quantity, i.unit, i.reorder_level
+        FROM inventory_items i JOIN inventory_levels l ON i.item_id = l.item_id AND l.farm_id = i.farm_id
+        WHERE i.farm_id = ? AND l.quantity <= i.reorder_level
     ");
     $stmt->execute([$farmId]);
     $lowStock = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -113,7 +123,7 @@ function getFarmAdvisorInsights(PDO $conn, int $farmId): array {
         $insights[] = [
             'severity' => 'warning',
             'title' => sprintf('%d inventory item%s running low', count($lowStock), count($lowStock) === 1 ? ' is' : 's are'),
-            'why' => implode(', ', $names) . ' ' . (count($lowStock) === 1 ? 'is' : 'are') . ' at or below the 10-unit threshold.',
+            'why' => implode(', ', $names) . ' ' . (count($lowStock) === 1 ? 'is' : 'are') . ' at or below its reorder level.',
             'impact' => 'Running out could disrupt feeding or treatment schedules.',
             'action' => 'Reorder soon — check exact quantities on the inventory page.',
             'link' => 'modules/inventory/', 'link_label' => 'Check inventory',
@@ -134,12 +144,16 @@ function getFarmAdvisorInsights(PDO $conn, int $farmId): array {
 }
 
 // Unified, severity-sorted feed for the "What Needs Your Attention" list.
-function getAttentionItems(PDO $conn, int $farmId, int $limit = 6): array {
+function getAttentionItems(PDO $conn, ?int $farmId, int $limit = 6): array {
+    if ($farmId === null) {
+        return [];
+    }
+
     $items = [];
 
     $stmt = $conn->prepare("
         SELECT h.event_type, h.severity, h.event_date, h.description, c.cow_id, c.unique_id, c.name
-        FROM health_events h JOIN cows c ON h.cow_id = c.cow_id
+        FROM health_events h JOIN cows c ON h.cow_id = c.cow_id AND c.farm_id = h.farm_id
         WHERE h.farm_id = ? AND h.severity IN ('urgent','moderate') AND h.event_date >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
         ORDER BY FIELD(h.severity, 'urgent', 'moderate'), h.event_date DESC
     ");
@@ -169,9 +183,9 @@ function getAttentionItems(PDO $conn, int $farmId, int $limit = 6): array {
     }
 
     $stmt = $conn->prepare("
-        SELECT i.item_name, l.quantity, i.unit
-        FROM inventory_items i JOIN inventory_levels l ON i.item_id = l.item_id
-        WHERE i.farm_id = ? AND l.quantity <= 10
+        SELECT i.item_name, l.quantity, i.unit, i.reorder_level
+        FROM inventory_items i JOIN inventory_levels l ON i.item_id = l.item_id AND l.farm_id = i.farm_id
+        WHERE i.farm_id = ? AND l.quantity <= i.reorder_level
     ");
     $stmt->execute([$farmId]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {

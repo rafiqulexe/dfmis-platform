@@ -1,16 +1,21 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/errors.php';
+require_once '../../includes/audit.php';
+require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('inventory.view');
+
+requireAuth('inventory.view');
 
 try {
     $conn = getDBConnection();
+    // The join now also matches on farm_id so a level row whose tenant key
+    // ever drifted from its item's cannot be pulled in through the join.
     $items = tenantQuery($conn, "
         SELECT i.*, l.quantity, l.inventory_id
         FROM inventory_items i
-        LEFT JOIN inventory_levels l ON i.item_id = l.item_id
+        LEFT JOIN inventory_levels l ON i.item_id = l.item_id AND l.farm_id = i.farm_id
         WHERE {scope}
         ORDER BY i.item_name
     ", [], 'i');

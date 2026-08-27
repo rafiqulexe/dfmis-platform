@@ -1,11 +1,14 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('cows.create');
+require_once '../../includes/validation.php';
+
+requireAuth('cows.create');
 
 $error = '';
 $success = '';
@@ -13,20 +16,39 @@ $success = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $unique_id = trim($_POST['unique_id'] ?? '');
-    $date_of_birth = trim($_POST['date_of_birth'] ?? '');
-    $notes = trim($_POST['notes'] ?? '');
+    $v = new DfmsValidator($_POST);
+    // A tag is the animal's only human-readable identifier; it must be
+    // present and printable. Uniqueness is now enforced PER FARM by the
+    // database (migration 005), so the duplicate below is a same-farm clash.
+    $unique_id = $v->string('unique_id', 1, 50);
+    $date_of_birth = $v->date('date_of_birth', ['nullable' => true]);
+    $notes = $v->text('notes', 5000, ['nullable' => true]);
 
-    if (empty($unique_id)) {
-        $error = 'Unique ID is required';
+    if ($v->fails()) {
+        $error = $v->firstError();
     } else {
         try {
             $conn = getDBConnection();
-            $stmt = $conn->prepare("INSERT INTO cows (unique_id, date_of_birth, notes, farm_id) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$unique_id, $date_of_birth, $notes, currentFarmId()]);
+            // farm_id is applied by tenantInsert() from the tenant context and
+            // can never be supplied by the client.
+            $cowId = tenantInsert($conn, 'cows', [
+                'unique_id'     => $unique_id,
+                'date_of_birth' => $date_of_birth,
+                'notes'         => $notes,
+            ]);
+            auditCreate('cow', $cowId, [
+                'unique_id'     => $unique_id,
+                'date_of_birth' => $date_of_birth,
+            ]);
             $success = 'Cow added successfully';
         } catch (PDOException $e) {
-            $error = safeError($e, 'Error adding cow');
+            // 23000 = integrity constraint. On this table that means the tag
+            // is already used ON THIS FARM — a user error, not a system fault.
+            if ($e->getCode() === '23000') {
+                $error = 'An animal with that tag already exists on this farm.';
+            } else {
+                $error = safeError($e, 'Error adding cow');
+            }
         }
     }
 }

@@ -1,23 +1,47 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/errors.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('health.view');
+require_once '../../includes/validation.php';
+
+requireAuth('health.view');
 
 $error_message = '';
 $events = [];
+$perPage = 50;
+$page = 1;
+$totalPages = 1;
+$totalEvents = 0;
 
 try {
     $conn = getDBConnection();
+
+    $v = new DfmsValidator($_GET);
+    $page = $v->integer('page', ['nullable' => true, 'min' => 1, 'max' => 100000]) ?? 1;
+
+    $totalEvents = (int) tenantScalar(
+        $conn,
+        "SELECT COUNT(*) FROM health_events h JOIN cows c ON h.cow_id = c.cow_id AND c.farm_id = h.farm_id WHERE {scope}",
+        [],
+        0,
+        'h'
+    );
+    $totalPages = max(1, (int) ceil($totalEvents / $perPage));
+    $page = min($page, $totalPages);
+    $offset = ($page - 1) * $perPage;
+
+    // The join is additionally constrained on c.farm_id so a health row whose
+    // farm_id ever drifted from its animal's cannot surface here.
     $events = tenantQuery($conn, "
         SELECT h.*, c.unique_id, c.name
         FROM health_events h
-        JOIN cows c ON h.cow_id = c.cow_id
+        JOIN cows c ON h.cow_id = c.cow_id AND c.farm_id = h.farm_id
         WHERE {scope}
         ORDER BY h.event_date DESC
-    ", [], 'h');
+        LIMIT " . (int) $perPage . " OFFSET " . (int) $offset, [], 'h');
 } catch (PDOException $e) {
     $error_message = safeError($e, "Database error");
 }

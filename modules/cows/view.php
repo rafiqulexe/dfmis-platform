@@ -1,30 +1,25 @@
 <?php
 require_once '../../includes/auth.php';
-require_once '../../config/database.php';
+require_once '../../includes/errors.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('cows.view');
+require_once '../../includes/validation.php';
 
-$cow_id = isset($_GET['id']) ? $_GET['id'] : null;
+requireAuth('cows.view');
+
 $error_message = '';
-$cow = null;
 $healthEvents = [];
 
-if (!$cow_id) {
-    $_SESSION['error_message'] = "No cow ID provided.";
-    header('Location: ' . BASE_URL . 'modules/cows/');
-    exit();
-}
+$cow_id = dfms_route_id('id');
+$conn = getDBConnection();
+
+// 404s if the cow belongs to another tenant — indistinguishable from
+// "does not exist", so this cannot be used to probe other farms.
+$cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow_id, 'deleted_at IS NULL');
 
 try {
-    $conn = getDBConnection();
-
-    // 404s if the cow belongs to another tenant — indistinguishable from
-    // "does not exist", so this cannot be used to probe other farms.
-    $cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow_id, 'deleted_at IS NULL');
-
     $healthEvents = tenantQuery(
         $conn,
         "SELECT * FROM health_events WHERE {scope} AND cow_id = ? ORDER BY event_date DESC",

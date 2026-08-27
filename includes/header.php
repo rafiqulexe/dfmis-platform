@@ -9,16 +9,34 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/errors.php';
+require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/tenant.php';
+require_once __DIR__ . '/repository.php';
 require_once __DIR__ . '/permissions.php';
 require_once __DIR__ . '/navigation.php';
 require_once __DIR__ . '/components.php';
 
-$dfms_farm_name = '';
-$dfms_org_name = '';
-$dfms_unread_alerts = 0;
+/**
+ * Resolves everything the shell needs to render.
+ *
+ * Baseline audit C-10: this logic used to run at file scope, so $conn, $stmt
+ * and $row leaked into the scope of whichever page included the header —
+ * silently replacing the connection handle a page was already using. Keeping
+ * it in a function confines those locals.
+ */
+function dfms_shell_context(): array {
+    $context = [
+        'farm_name'     => '',
+        'org_name'      => '',
+        'unread_alerts' => 0,
+        'farms'         => [],
+    ];
 
-if (isLoggedIn() && currentFarmId() !== null) {
+    if (!isLoggedIn() || currentFarmId() === null) {
+        return $context;
+    }
+
     $conn = getDBConnection();
 
     $stmt = $conn->prepare(
@@ -28,17 +46,36 @@ if (isLoggedIn() && currentFarmId() !== null) {
     );
     $stmt->execute([currentFarmId()]);
     if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $dfms_farm_name = (string) $row['farm_name'];
-        $dfms_org_name = (string) $row['org_name'];
+        $context['farm_name'] = (string) $row['farm_name'];
+        $context['org_name'] = (string) $row['org_name'];
     }
 
     // Unread alerts drive the topbar indicator. Scoped like all tenant reads.
     if (hasPermission('alerts.view')) {
-        $stmt = $conn->prepare("SELECT COUNT(*) FROM alerts WHERE farm_id = ? AND is_read = 0");
-        $stmt->execute([currentFarmId()]);
-        $dfms_unread_alerts = (int) $stmt->fetchColumn();
+        $context['unread_alerts'] = (int) tenantScalar(
+            $conn,
+            "SELECT COUNT(*) FROM alerts WHERE {scope} AND is_read = 0"
+        );
     }
+
+    // Farms this user may switch to. Only queried when there is more than one,
+    // so the single-farm case costs nothing (baseline audit D-2).
+    $allowed = allowedFarmIds();
+    if (count($allowed) > 1) {
+        $placeholders = implode(',', array_fill(0, count($allowed), '?'));
+        $stmt = $conn->prepare("SELECT farm_id, name FROM farms WHERE farm_id IN ($placeholders) ORDER BY name");
+        $stmt->execute($allowed);
+        $context['farms'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    return $context;
 }
+
+$dfms_shell = dfms_shell_context();
+$dfms_farm_name = $dfms_shell['farm_name'];
+$dfms_org_name = $dfms_shell['org_name'];
+$dfms_unread_alerts = $dfms_shell['unread_alerts'];
+$dfms_switchable_farms = $dfms_shell['farms'];
 
 $dfms_role_label = ucwords(str_replace('_', ' ', (string) currentFarmRole()));
 $dfms_username = $_SESSION['username'] ?? '';
@@ -165,10 +202,31 @@ function dfms_render_nav_item(array $item, $activeKey, $unreadAlerts = 0) {
                         </a>
                     <?php endif; ?>
 
-                    <span class="dfms-context-chip dfms-tooltip" data-tooltip="Active farm">
-                        <span class="dfms-context-dot" aria-hidden="true"></span>
-                        <span class="dfms-context-name"><?php echo e($dfms_farm_name); ?></span>
-                    </span>
+                    <?php if (count($dfms_switchable_farms) > 1): ?>
+                        <!-- Farm switcher. switchFarm() re-checks membership
+                             server-side, so a crafted farm_id cannot move a
+                             user into another tenant. -->
+                        <form method="POST" action="<?php echo BASE_URL; ?>modules/farm/switch.php" class="dfms-context-chip">
+                            <?php csrf_field(); ?>
+                            <span class="dfms-context-dot" aria-hidden="true"></span>
+                            <label for="dfms-farm-switch" class="dfms-visually-hidden">Active farm</label>
+                            <select id="dfms-farm-switch" name="farm_id" onchange="this.form.submit()"
+                                    style="border:none;background:transparent;font:inherit;color:inherit;cursor:pointer;">
+                                <?php foreach ($dfms_switchable_farms as $dfms_farm): ?>
+                                    <option value="<?php echo (int) $dfms_farm['farm_id']; ?>"
+                                        <?php echo (int) $dfms_farm['farm_id'] === currentFarmId() ? 'selected' : ''; ?>>
+                                        <?php echo e($dfms_farm['name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <noscript><button type="submit" class="dfms-btn dfms-btn-secondary">Switch</button></noscript>
+                        </form>
+                    <?php else: ?>
+                        <span class="dfms-context-chip dfms-tooltip" data-tooltip="Active farm">
+                            <span class="dfms-context-dot" aria-hidden="true"></span>
+                            <span class="dfms-context-name"><?php echo e($dfms_farm_name); ?></span>
+                        </span>
+                    <?php endif; ?>
 
                     <div class="dfms-user-menu">
                         <button type="button" class="dfms-user-trigger" data-dropdown-toggle="user-menu"

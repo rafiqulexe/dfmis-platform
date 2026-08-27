@@ -1,33 +1,51 @@
 <?php
 require_once '../../includes/auth.php';
-require_once '../../config/database.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('alerts.create');
+require_once '../../includes/validation.php';
+
+requireAuth('alerts.create');
 
 $error_message = '';
 $success_message = '';
 
+// Matches the alerts.severity ENUM. Previously never set, so every manually
+// created alert silently took the 'info' default and was then filtered out of
+// the dashboard's attention list, which only shows warning/critical.
+const ALERT_SEVERITIES = ['info', 'warning', 'critical'];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $alert_type = $_POST['alert_type'] ?? '';
-    $description = $_POST['description'] ?? '';
+    $v = new DfmsValidator($_POST);
+    $alert_type = $v->string('alert_type', 1, 50);
+    $severity = $v->enum('severity', ALERT_SEVERITIES, ['default' => 'info']);
+    $description = $v->text('description', 2000, ['nullable' => true]);
 
-    try {
-        $conn = getDBConnection();
-        $stmt = $conn->prepare("INSERT INTO alerts (alert_time, alert_type, description, farm_id) VALUES (NOW(), ?, ?, ?)");
-        $stmt->execute([$alert_type, $description, currentFarmId()]);
-        $success_message = "Alert created successfully";
+    if ($v->fails()) {
+        $error_message = $v->firstError();
+    } else {
+        try {
+            $conn = getDBConnection();
+            $alertId = tenantInsert($conn, 'alerts', [
+                'alert_time'  => date('Y-m-d H:i:s'),
+                'alert_type'  => $alert_type,
+                'severity'    => $severity,
+                'description' => $description,
+            ]);
+            auditCreate('alert', $alertId, [
+                'alert_type' => $alert_type,
+                'severity'   => $severity,
+            ]);
 
-        // Redirect back to index after successful creation
-        header("Location: index.php");
-        exit();
-    } catch (PDOException $e) {
-        $error_message = safeError($e, "Creation failed");
+            redirectWith('modules/alerts/', 'success', 'Alert created successfully.');
+        } catch (PDOException $e) {
+            $error_message = safeError($e, "Creation failed");
+        }
     }
 }
 

@@ -1,13 +1,37 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/errors.php';
+require_once '../../includes/audit.php';
+require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('milk.view');
+require_once '../../includes/validation.php';
+
+requireAuth('milk.view');
+
+$productions = [];
+$perPage = 50;
+$page = 1;
+$totalPages = 1;
+$totalRecords = 0;
 
 try {
     $conn = getDBConnection();
-    $productions = tenantQuery($conn, "SELECT * FROM milk_production WHERE {scope} ORDER BY production_date DESC LIMIT 30");
+
+    $v = new DfmsValidator($_GET);
+    $page = $v->integer('page', ['nullable' => true, 'min' => 1, 'max' => 100000]) ?? 1;
+
+    // Was a bare LIMIT 30 with no way to reach record 31 (baseline audit F-3).
+    $totalRecords = (int) tenantScalar($conn, "SELECT COUNT(*) FROM milk_production WHERE {scope}");
+    $totalPages = max(1, (int) ceil($totalRecords / $perPage));
+    $page = min($page, $totalPages);
+    $offset = ($page - 1) * $perPage;
+
+    $productions = tenantQuery(
+        $conn,
+        "SELECT * FROM milk_production WHERE {scope} ORDER BY production_date DESC
+         LIMIT " . (int) $perPage . " OFFSET " . (int) $offset
+    );
 } catch (PDOException $e) {
     $productions = [];
 }

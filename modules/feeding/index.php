@@ -1,9 +1,12 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/errors.php';
+require_once '../../includes/audit.php';
+require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('feeding.view');
+
+requireAuth('feeding.view');
 
 try {
     $conn = getDBConnection();

@@ -1,18 +1,39 @@
 <?php
 require_once '../../includes/auth.php';
-require_once '../../config/database.php';
+require_once '../../includes/errors.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('cows.view');
+require_once '../../includes/validation.php';
+
+requireAuth('cows.view');
 
 $error_message = '';
 $cows = [];
+$perPage = 50;
+$page = 1;
+$totalPages = 1;
+$totalCows = 0;
 
 try {
     $conn = getDBConnection();
-    $cows = tenantQuery($conn, "SELECT * FROM cows WHERE {scope} AND deleted_at IS NULL ORDER BY unique_id");
+
+    $v = new DfmsValidator($_GET);
+    $page = $v->integer('page', ['nullable' => true, 'min' => 1, 'max' => 100000]) ?? 1;
+
+    // Baseline audit F-3: this list was unbounded. Pagination uses the
+    // component that already existed and had no callers.
+    $totalCows = (int) tenantScalar($conn, "SELECT COUNT(*) FROM cows WHERE {scope} AND deleted_at IS NULL");
+    $totalPages = max(1, (int) ceil($totalCows / $perPage));
+    $page = min($page, $totalPages);
+    $offset = ($page - 1) * $perPage;
+
+    $cows = tenantQuery(
+        $conn,
+        "SELECT * FROM cows WHERE {scope} AND deleted_at IS NULL ORDER BY unique_id
+         LIMIT " . (int) $perPage . " OFFSET " . (int) $offset
+    );
 } catch (PDOException $e) {
     $error_message = safeError($e, "Database error");
 }

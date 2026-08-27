@@ -1,45 +1,58 @@
 <?php
 require_once '../../includes/auth.php';
-require_once '../../config/database.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('alerts.edit');
+require_once '../../includes/validation.php';
 
-$alert_id = isset($_GET['id']) ? $_GET['id'] : null;
+requireAuth('alerts.edit');
+
 $error_message = '';
 $success_message = '';
-$alert = null;
 
+const ALERT_SEVERITIES = ['info', 'warning', 'critical'];
+
+$alert_id = dfms_route_id('id');
 $conn = getDBConnection();
-
-if ($alert_id) {
-    $alert = tenantFindOr404($conn, 'alerts', 'alert_id', $alert_id);
-}
+$alert = tenantFindOr404($conn, 'alerts', 'alert_id', $alert_id);
 
 // Handle form submission
-if ($alert && $_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $alert_type = $_POST['alert_type'] ?? '';
-    $description = $_POST['description'] ?? '';
-    $alert_time = $_POST['alert_time'] ?? '';
+    $v = new DfmsValidator($_POST);
+    $alert_type = $v->string('alert_type', 1, 50);
+    $severity = $v->enum('severity', ALERT_SEVERITIES, ['default' => $alert['severity'] ?? 'info']);
+    $description = $v->text('description', 2000, ['nullable' => true]);
+    // The form posts a datetime-local value (2024-01-01T10:00), which MySQL
+    // rejects. datetime() normalises both that and the SQL format.
+    $alert_time = $v->datetime('alert_time');
 
-    try {
-        tenantExec(
-            $conn,
-            "UPDATE alerts SET alert_type = ?, description = ?, alert_time = ? WHERE alert_id = ? AND {scope}",
-            [$alert_type, $description, $alert_time, $alert['alert_id']]
-        );
-        $success_message = "Alert updated successfully";
+    if ($v->fails()) {
+        $error_message = $v->firstError();
+    } else {
+        try {
+            $before = $alert;
+            tenantExec(
+                $conn,
+                "UPDATE alerts SET alert_type = ?, severity = ?, description = ?, alert_time = ? WHERE alert_id = ? AND {scope}",
+                [$alert_type, $severity, $description, $alert_time, $alert['alert_id']]
+            );
 
-        // Redirect back to index after successful update
-        header("Location: index.php");
-        exit();
-    } catch (PDOException $e) {
-        $error_message = safeError($e, "Update failed");
+            auditUpdate('alert', (int) $alert['alert_id'], $before, [
+                'alert_type'  => $alert_type,
+                'severity'    => $severity,
+                'description' => $description,
+                'alert_time'  => $alert_time,
+            ]);
+
+            redirectWith('modules/alerts/', 'success', 'Alert updated successfully.');
+        } catch (PDOException $e) {
+            $error_message = safeError($e, "Update failed");
+        }
     }
 }
 

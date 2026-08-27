@@ -1,14 +1,21 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('health.create');
+require_once '../../includes/validation.php';
+
+requireAuth('health.create');
 
 $error = '';
 $success = '';
+
+// Values the health_events ENUM columns actually accept. Anything else is
+// rejected rather than handed to the database (baseline audit C-6).
+const HEALTH_SEVERITIES = ['routine', 'moderate', 'urgent'];
 
 // Dropdown lists only this farm's cows.
 try {
@@ -21,14 +28,15 @@ try {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $cow_id = $_POST['cow_id'] ?? '';
-    $event_date = $_POST['event_date'] ?? '';
-    $event_type = $_POST['event_type'] ?? '';
-    $severity = $_POST['severity'] ?? 'routine';
-    $description = $_POST['description'] ?? '';
+    $v = new DfmsValidator($_POST);
+    $cow_id = $v->id('cow_id');
+    $event_date = $v->date('event_date');
+    $event_type = $v->string('event_type', 1, 50);
+    $severity = $v->enum('severity', HEALTH_SEVERITIES, ['default' => 'routine']);
+    $description = $v->text('description', 5000, ['nullable' => true]);
 
-    if (empty($cow_id) || empty($event_date) || empty($event_type)) {
-        $error = 'Please fill in all required fields';
+    if ($v->fails()) {
+        $error = $v->firstError();
     } else {
         // Never trust the submitted cow_id — a POST can name any id, so
         // confirm it belongs to this farm before writing a row against it.
@@ -37,8 +45,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Please select a valid cow.';
         } else {
             try {
-                $stmt = $conn->prepare("INSERT INTO health_events (cow_id, event_date, event_type, severity, description, farm_id, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$targetCow['cow_id'], $event_date, $event_type, $severity, $description, currentFarmId(), currentUserId()]);
+                $eventId = tenantInsert($conn, 'health_events', [
+                    'cow_id'      => $targetCow['cow_id'],
+                    'event_date'  => $event_date,
+                    'event_type'  => $event_type,
+                    'severity'    => $severity,
+                    'description' => $description,
+                    'recorded_by' => currentUserId(),
+                ]);
+                auditCreate('health_event', $eventId, [
+                    'cow_id'     => (int) $targetCow['cow_id'],
+                    'event_type' => $event_type,
+                    'severity'   => $severity,
+                    'event_date' => $event_date,
+                ]);
                 $success = 'Health event added successfully';
             } catch (PDOException $e) {
                 $error = safeError($e, 'Error adding health event');

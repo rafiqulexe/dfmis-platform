@@ -1,11 +1,14 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('feeding.create');
+require_once '../../includes/validation.php';
+
+requireAuth('feeding.create');
 
 $error = '';
 $success = '';
@@ -13,17 +16,26 @@ $success = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $feed_time = $_POST['feed_time'] ?? '';
-    $feed_type = $_POST['feed_type'] ?? '';
-    $feed_amount = $_POST['feed_amount'] ?? '';
+    $v = new DfmsValidator($_POST);
+    $feed_time = $v->time('feed_time');
+    $feed_type = $v->string('feed_type', 1, 50);
+    $feed_amount = $v->decimal('feed_amount', ['min' => 0, 'max' => 100000]);
 
-    if (empty($feed_time) || empty($feed_type) || empty($feed_amount)) {
-        $error = 'Please fill in all required fields';
+    if ($v->fails()) {
+        $error = $v->firstError();
     } else {
         try {
             $conn = getDBConnection();
-            $stmt = $conn->prepare("INSERT INTO feeding_schedules (feed_time, feed_type, feed_amount, farm_id) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$feed_time, $feed_type, $feed_amount, currentFarmId()]);
+            $scheduleId = tenantInsert($conn, 'feeding_schedules', [
+                'feed_time'   => $feed_time,
+                'feed_type'   => $feed_type,
+                'feed_amount' => $feed_amount,
+            ]);
+            auditCreate('feeding_schedule', $scheduleId, [
+                'feed_time'   => $feed_time,
+                'feed_type'   => $feed_type,
+                'feed_amount' => $feed_amount,
+            ]);
             $success = 'Feeding schedule added successfully';
         } catch (PDOException $e) {
             $error = safeError($e, 'Error adding schedule');

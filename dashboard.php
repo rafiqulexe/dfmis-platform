@@ -1,10 +1,17 @@
 <?php
 require_once 'includes/auth.php';
+require_once 'includes/errors.php';
+require_once 'includes/audit.php';
 require_once 'includes/repository.php';
 require_once 'includes/functions.php';
 require_once 'includes/permissions.php';
 require_once 'includes/insights.php';
-requireLogin();
+
+// Baseline audit C-1 (reproduced): a logged-in user with no farm_users row
+// produced a null farm id, which was passed to a non-nullable int parameter
+// and crashed the page with a TypeError that leaked the server path.
+// requireAuth() now renders an explicit "no farm assigned" state instead.
+requireAuth();
 
 $farmId = currentFarmId();
 $conn = getDBConnection();
@@ -15,40 +22,35 @@ try {
     $stmt->execute([$farmId]);
     $farmName = $stmt->fetchColumn() ?: 'Your Farm';
 
-    $stmt = $conn->prepare("SELECT COUNT(*) FROM cows WHERE farm_id = ? AND deleted_at IS NULL");
-    $stmt->execute([$farmId]);
-    $totalCows = (int) $stmt->fetchColumn();
+    // Every read below goes through the repository layer rather than a
+    // hand-written "WHERE farm_id = ?" (baseline audit D-3).
+    $totalCows = (int) tenantScalar($conn, "SELECT COUNT(*) FROM cows WHERE {scope} AND deleted_at IS NULL");
 
     $herdCounts = ['healthy' => 0, 'at_risk' => 0, 'sick' => 0, 'treatment' => 0];
-    $stmt = $conn->prepare("SELECT health_status, COUNT(*) AS n FROM cows WHERE farm_id = ? AND deleted_at IS NULL GROUP BY health_status");
-    $stmt->execute([$farmId]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $herdCounts[$row['health_status']] = (int) $row['n'];
+    foreach (tenantQuery($conn, "SELECT health_status, COUNT(*) AS n FROM cows WHERE {scope} AND deleted_at IS NULL GROUP BY health_status") as $row) {
+        // Guard against an ENUM value the dashboard does not know about, which
+        // would otherwise silently add an unlabelled segment to the herd bar.
+        if (array_key_exists($row['health_status'], $herdCounts)) {
+            $herdCounts[$row['health_status']] = (int) $row['n'];
+        }
     }
 
-    $stmt = $conn->prepare("SELECT COUNT(*) FROM cows WHERE farm_id = ? AND deleted_at IS NULL AND reproductive_status = 'pregnant'");
-    $stmt->execute([$farmId]);
-    $pregnantCount = (int) $stmt->fetchColumn();
+    $pregnantCount = (int) tenantScalar($conn, "SELECT COUNT(*) FROM cows WHERE {scope} AND deleted_at IS NULL AND reproductive_status = 'pregnant'");
+    $lactatingCount = (int) tenantScalar($conn, "SELECT COUNT(*) FROM cows WHERE {scope} AND deleted_at IS NULL AND lactation_status = 'lactating'");
 
-    $stmt = $conn->prepare("SELECT COUNT(*) FROM cows WHERE farm_id = ? AND deleted_at IS NULL AND lactation_status = 'lactating'");
-    $stmt->execute([$farmId]);
-    $lactatingCount = (int) $stmt->fetchColumn();
+    $todayMilk = (float) tenantScalar($conn, "SELECT total_milk_yield FROM milk_production WHERE {scope} AND production_date = CURDATE()", [], 0);
+    $last7Avg = (float) tenantScalar($conn, "SELECT AVG(total_milk_yield) FROM milk_production WHERE {scope} AND production_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)", [], 0);
+    $last30Avg = (float) tenantScalar($conn, "SELECT AVG(total_milk_yield) FROM milk_production WHERE {scope} AND production_date >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)", [], 0);
 
-    $stmt = $conn->prepare("SELECT total_milk_yield FROM milk_production WHERE farm_id = ? AND production_date = CURDATE()");
-    $stmt->execute([$farmId]);
-    $todayMilk = (float) ($stmt->fetchColumn() ?: 0);
-
-    $stmt = $conn->prepare("SELECT AVG(total_milk_yield) FROM milk_production WHERE farm_id = ? AND production_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)");
-    $stmt->execute([$farmId]);
-    $last7Avg = (float) ($stmt->fetchColumn() ?: 0);
-
-    $stmt = $conn->prepare("SELECT AVG(total_milk_yield) FROM milk_production WHERE farm_id = ? AND production_date >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)");
-    $stmt->execute([$farmId]);
-    $last30Avg = (float) ($stmt->fetchColumn() ?: 0);
-
-    $stmt = $conn->prepare("SELECT production_date, total_milk_yield FROM milk_production WHERE farm_id = ? ORDER BY production_date ASC");
-    $stmt->execute([$farmId]);
-    $milkSeries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Baseline audit C-4: this had no date bound, so the chart labelled
+    // "30-Day" plotted the entire history and serialized all of it into the
+    // page. Now bounded to match the two averages computed above.
+    $milkSeries = tenantQuery(
+        $conn,
+        "SELECT production_date, total_milk_yield FROM milk_production
+          WHERE {scope} AND production_date >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+          ORDER BY production_date ASC"
+    );
 
     $insights = getFarmAdvisorInsights($conn, $farmId);
     $attentionItems = getAttentionItems($conn, $farmId);
@@ -110,7 +112,7 @@ require_once 'includes/header.php';
                 <p class="dfms-insight-meta"><strong>Why:</strong> <?php echo htmlspecialchars($insight['why']); ?></p>
                 <p class="dfms-insight-meta"><strong>Impact:</strong> <?php echo htmlspecialchars($insight['impact']); ?></p>
                 <p class="dfms-insight-meta"><strong>Action:</strong> <?php echo htmlspecialchars($insight['action']); ?></p>
-                <a class="dfms-insight-link" href="<?php echo BASE_URL . $insight['link']; ?>"><?php echo htmlspecialchars($insight['link_label']); ?> →</a>
+                <a class="dfms-insight-link" href="<?php echo e(BASE_URL . $insight['link']); ?>"><?php echo htmlspecialchars($insight['link_label']); ?> →</a>
             </div>
         <?php endforeach; ?>
     </div>
@@ -206,7 +208,7 @@ require_once 'includes/header.php';
         <?php else: ?>
             <div class="dfms-attention-list">
                 <?php foreach ($attentionItems as $item): ?>
-                    <a class="dfms-attention-item" href="<?php echo BASE_URL . $item['link']; ?>">
+                    <a class="dfms-attention-item" href="<?php echo e(BASE_URL . $item['link']); ?>">
                         <span class="dfms-attention-dot <?php echo htmlspecialchars($item['severity']); ?>"></span>
                         <span>
                             <span class="dfms-attention-title"><?php echo htmlspecialchars($item['title']); ?></span>

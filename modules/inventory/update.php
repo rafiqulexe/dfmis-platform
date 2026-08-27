@@ -1,104 +1,156 @@
 <?php
 require_once '../../includes/auth.php';
-require_once '../../config/database.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('inventory.update');
+require_once '../../includes/validation.php';
 
-$inventory_id = isset($_GET['id']) ? $_GET['id'] : null;
+requireAuth('inventory.update');
+
 $error_message = '';
 $success_message = '';
-$inventory = null;
 
-if (!$inventory_id) {
-    $_SESSION['error_message'] = "No inventory record specified.";
-    header('Location: ' . BASE_URL . 'modules/inventory/');
-    exit();
-}
-
+$inventory_id = dfms_route_id('id');
 $conn = getDBConnection();
 
 // Scoped lookup first, then join for the display fields.
 $inventory = tenantFindOr404($conn, 'inventory_levels', 'inventory_id', $inventory_id);
 $detail = tenantQuery(
     $conn,
-    "SELECT ii.item_name, ii.item_type, ii.unit FROM inventory_items ii WHERE {scope} AND ii.item_id = ?",
+    "SELECT ii.item_name, ii.item_type, ii.unit, ii.reorder_level FROM inventory_items ii WHERE {scope} AND ii.item_id = ?",
     [$inventory['item_id']],
     'ii'
 );
 if (empty($detail)) {
-    http_response_code(404);
-    exit('Not found.');
+    dfms_abort(404, 'inventory_levels#' . $inventory['inventory_id'] . ' references an item outside the active farm');
 }
 $inventory = array_merge($inventory, $detail[0]);
 
+// A user-facing validation failure. Distinct from a system fault so the
+// message can be shown verbatim without leaking internals.
+class StockValidationError extends RuntimeException {}
+
 // Handle form submission
-if ($inventory && $_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $new_quantity = $_POST['quantity'] ?? '';
-    $adjustment_type = $_POST['adjustment_type'] ?? '';
-    $adjustment_amount = $_POST['adjustment_amount'] ?? '';
+    $v = new DfmsValidator($_POST);
+    // Baseline audit C-7: anything that was not 'set' or 'add' silently
+    // SUBTRACTED stock. Unknown input is now rejected outright.
+    $adjustment_type = $v->enum('adjustment_type', ['set', 'add', 'subtract']);
+    $new_quantity = $v->decimal('quantity', ['nullable' => true, 'min' => 0, 'max' => 9999999]);
+    $adjustment_amount = $v->decimal('adjustment_amount', ['nullable' => true, 'min' => 0, 'max' => 9999999]);
 
-    try {
-        $conn->beginTransaction();
-
-        // Get current quantity
-        $stmt = $conn->prepare("SELECT quantity FROM inventory_levels WHERE inventory_id = ? AND farm_id = ? FOR UPDATE");
-        $stmt->execute([$inventory['inventory_id'], currentFarmId()]);
-        $current = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($adjustment_type === 'set') {
-            // Directly set new quantity
-            $new_quantity = floatval($new_quantity);
-            if ($new_quantity < 0) {
-                throw new Exception("Quantity cannot be negative");
-            }
-            $final_quantity = $new_quantity;
-        } else {
-            // Add or subtract from current quantity
-            $adjustment_amount = floatval($adjustment_amount);
-            $final_quantity = $adjustment_type === 'add' 
-                ? $current['quantity'] + $adjustment_amount
-                : $current['quantity'] - $adjustment_amount;
-                
-            if ($final_quantity < 0) {
-                throw new Exception("Cannot reduce stock below 0");
-            }
+    if (!$v->fails()) {
+        if ($adjustment_type === 'set' && $new_quantity === null) {
+            $v->required('quantity', 'Enter the new quantity.');
         }
-
-        // Update inventory level
-        tenantExec(
-            $conn,
-            "UPDATE inventory_levels SET quantity = ? WHERE inventory_id = ? AND {scope}",
-            [$final_quantity, $inventory['inventory_id']]
-        );
-
-        // Check if stock is low and create alert if necessary
-        if ($final_quantity <= 10) { // You can adjust this threshold
-            $stmt = $conn->prepare("
-                INSERT INTO alerts (alert_time, alert_type, severity, description, farm_id)
-                VALUES (NOW(), 'Low Inventory', 'warning', ?, ?)
-            ");
-            $description = "Low stock alert for " . $inventory['item_name'] . " (" . $final_quantity . " " . $inventory['unit'] . " remaining)";
-            $stmt->execute([$description, currentFarmId()]);
+        if ($adjustment_type !== 'set' && $adjustment_amount === null) {
+            $v->required('adjustment_amount', 'Enter the amount to adjust by.');
         }
+    }
 
-        $conn->commit();
-        $_SESSION['success_message'] = "Stock updated successfully";
-        header('Location: ' . BASE_URL . 'modules/inventory/');
-        exit();
+    if ($v->fails()) {
+        $error_message = $v->firstError();
+    } else {
+        try {
+            $result = tenantTransaction($conn, function (PDO $conn) use (
+                $inventory, $adjustment_type, $new_quantity, $adjustment_amount
+            ) {
+                // Row lock so two concurrent adjustments cannot both read the
+                // same starting quantity and lose one of the writes.
+                $stmt = $conn->prepare(
+                    "SELECT quantity FROM inventory_levels
+                      WHERE inventory_id = ? AND farm_id = ? FOR UPDATE"
+                );
+                $stmt->execute([$inventory['inventory_id'], currentFarmId()]);
+                $current = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($current === false) {
+                    throw new StockValidationError('That stock record is no longer available.');
+                }
 
-    } catch (PDOException $e) {
-        $conn->rollBack();
-        $error_message = safeError($e, "Update failed");
-    } catch (Exception $e) {
-        // Our own validation messages (e.g. "Cannot reduce stock below 0") are safe to show as-is.
-        $conn->rollBack();
-        $error_message = $e->getMessage();
+                $before = (float) $current['quantity'];
+
+                if ($adjustment_type === 'set') {
+                    $final = $new_quantity;
+                } elseif ($adjustment_type === 'add') {
+                    $final = $before + $adjustment_amount;
+                } else {
+                    $final = $before - $adjustment_amount;
+                }
+
+                if ($final < 0) {
+                    throw new StockValidationError('Cannot reduce stock below 0.');
+                }
+
+                tenantExec(
+                    $conn,
+                    "UPDATE inventory_levels SET quantity = ? WHERE inventory_id = ? AND {scope}",
+                    [$final, $inventory['inventory_id']]
+                );
+
+                // Baseline audit C-3: this used to insert a fresh alert on
+                // EVERY save at or below threshold, with no dedupe — and C-2
+                // meant none could ever be cleared. Now: raise one only when
+                // none is outstanding, and resolve it when stock recovers.
+                $threshold = (float) ($inventory['reorder_level'] ?? 10);
+                $existing = tenantQuery(
+                    $conn,
+                    "SELECT alert_id FROM alerts
+                      WHERE {scope} AND is_read = 0 AND alert_type = 'Low Inventory'
+                        AND entity_type = 'inventory_item' AND entity_id = ?",
+                    [$inventory['item_id']]
+                );
+
+                if ($final <= $threshold && empty($existing)) {
+                    tenantInsert($conn, 'alerts', [
+                        'alert_time'  => date('Y-m-d H:i:s'),
+                        'alert_type'  => 'Low Inventory',
+                        'severity'    => 'warning',
+                        'description' => sprintf(
+                            'Low stock: %s (%s %s remaining, reorder at %s)',
+                            $inventory['item_name'],
+                            rtrim(rtrim(number_format($final, 2, '.', ''), '0'), '.'),
+                            $inventory['unit'],
+                            rtrim(rtrim(number_format($threshold, 2, '.', ''), '0'), '.')
+                        ),
+                        'entity_type' => 'inventory_item',
+                        'entity_id'   => (int) $inventory['item_id'],
+                    ]);
+                } elseif ($final > $threshold && !empty($existing)) {
+                    // Stock recovered — clear the standing alert rather than
+                    // leaving a stale warning in the queue.
+                    tenantExec(
+                        $conn,
+                        "UPDATE alerts SET is_read = 1, read_at = NOW()
+                          WHERE is_read = 0 AND alert_type = 'Low Inventory'
+                            AND entity_type = 'inventory_item' AND entity_id = ? AND {scope}",
+                        [$inventory['item_id']]
+                    );
+                }
+
+                return ['before' => $before, 'after' => $final];
+            });
+
+            auditLog('inventory_level.adjust', 'inventory_level', (int) $inventory['inventory_id'],
+                ['quantity' => $result['before']],
+                [
+                    'quantity'        => $result['after'],
+                    'adjustment_type' => $adjustment_type,
+                    'item_name'       => $inventory['item_name'],
+                ]
+            );
+
+            redirectWith('modules/inventory/', 'success', 'Stock updated successfully.');
+        } catch (StockValidationError $e) {
+            // Our own validation messages are safe to show as-is.
+            $error_message = $e->getMessage();
+        } catch (PDOException $e) {
+            $error_message = safeError($e, "Update failed");
+        }
     }
 }
 

@@ -1,21 +1,18 @@
 <?php
 require_once '../../includes/auth.php';
-require_once '../../config/database.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('alerts.delete');
+require_once '../../includes/validation.php';
 
-$alert_id = isset($_GET['id']) ? $_GET['id'] : null;
+requireAuth('alerts.delete');
+
 $error_message = '';
 
-if (!$alert_id) {
-    header('Location: index.php');
-    exit();
-}
-
+$alert_id = dfms_route_id('id');
 $conn = getDBConnection();
 $alert = tenantFindOr404($conn, 'alerts', 'alert_id', $alert_id);
 
@@ -24,11 +21,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
     try {
+        // Audit BEFORE the delete — once the row is gone the detail is
+        // unrecoverable, and a deletion with no record of what was deleted is
+        // the least useful audit entry possible.
+        auditDelete('alert', (int) $alert['alert_id'], [
+            'alert_type'  => $alert['alert_type'],
+            'severity'    => $alert['severity'] ?? null,
+            'description' => $alert['description'],
+            'alert_time'  => $alert['alert_time'],
+        ]);
+
         tenantExec($conn, "DELETE FROM alerts WHERE alert_id = ? AND {scope}", [$alert['alert_id']]);
 
-        $_SESSION['success_message'] = "Alert deleted successfully.";
-        header('Location: index.php');
-        exit();
+        redirectWith('modules/alerts/', 'success', 'Alert deleted successfully.');
     } catch (PDOException $e) {
         $error_message = safeError($e, "Deletion failed");
     }

@@ -50,7 +50,10 @@ function dfms_nav_sections() {
         [
             'label' => 'Workspace',
             'items' => [
-                ['key' => 'settings', 'label' => 'Settings', 'url' => null, 'icon' => 'settings', 'permission' => null, 'status' => 'soon'],
+                // The audit log now has both a writer and a reader (baseline
+                // audit D-1); `audit.view` is restricted to farm managers.
+                ['key' => 'audit',    'label' => 'Audit Log', 'url' => 'modules/audit/', 'icon' => 'inbox',    'permission' => 'audit.view'],
+                ['key' => 'settings', 'label' => 'Settings',  'url' => null,             'icon' => 'settings', 'permission' => null, 'status' => 'soon'],
             ],
         ],
     ];

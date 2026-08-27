@@ -1,44 +1,62 @@
 <?php
 require_once '../../includes/auth.php';
-require_once '../../config/database.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('cows.edit');
+require_once '../../includes/validation.php';
 
-$cow_id = isset($_GET['id']) ? $_GET['id'] : null;
+requireAuth('cows.edit');
+
 $error_message = '';
 $success_message = '';
-$cow = null;
 
+// A malformed id is a 404 before it can reach a query — indistinguishable
+// from a foreign one, so this cannot be used to probe other tenants.
+$cow_id = dfms_route_id('id');
 $conn = getDBConnection();
 
 // 404s for another tenant's cow, so an id from the URL can never be edited
 // across a farm boundary.
-if ($cow_id) {
-    $cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow_id, 'deleted_at IS NULL');
-}
+$cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow_id, 'deleted_at IS NULL');
 
 // Handle form submission
-if ($cow && $_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $unique_id = $_POST['unique_id'] ?? '';
-    $dob = $_POST['dob'] ?? '';
-    $notes = $_POST['notes'] ?? '';
+    $v = new DfmsValidator($_POST);
+    // Baseline audit C-8: this used to accept whatever arrived, so a crafted
+    // POST could blank an animal's only identifier.
+    $unique_id = $v->string('unique_id', 1, 50);
+    $dob = $v->date('dob', ['nullable' => true]);
+    $notes = $v->text('notes', 5000, ['nullable' => true]);
 
-    try {
-        tenantExec(
-            $conn,
-            "UPDATE cows SET unique_id = ?, date_of_birth = ?, notes = ? WHERE cow_id = ? AND {scope}",
-            [$unique_id, $dob, $notes, $cow['cow_id']]
-        );
-        $success_message = "Cow details updated successfully";
-        $cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow['cow_id'], 'deleted_at IS NULL');
-    } catch (PDOException $e) {
-        $error_message = safeError($e, "Update failed");
+    if ($v->fails()) {
+        $error_message = $v->firstError();
+    } else {
+        try {
+            $before = $cow;
+            tenantExec(
+                $conn,
+                "UPDATE cows SET unique_id = ?, date_of_birth = ?, notes = ? WHERE cow_id = ? AND {scope}",
+                [$unique_id, $dob, $notes, $cow['cow_id']]
+            );
+            $cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow['cow_id'], 'deleted_at IS NULL');
+            auditUpdate('cow', (int) $cow['cow_id'], $before, [
+                'unique_id'     => $unique_id,
+                'date_of_birth' => $dob,
+                'notes'         => $notes,
+            ]);
+            $success_message = "Cow details updated successfully";
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000') {
+                $error_message = 'Another animal on this farm already uses that tag.';
+            } else {
+                $error_message = safeError($e, "Update failed");
+            }
+        }
     }
 }
 

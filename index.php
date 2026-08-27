@@ -1,10 +1,13 @@
 <?php
 require_once 'includes/auth.php';
+require_once 'includes/errors.php';
 require_once 'includes/csrf.php';
+require_once 'includes/audit.php';
+require_once 'includes/validation.php';
 
 // Redirect to dashboard if already logged in
 if (isLoggedIn()) {
-    header('Location: dashboard.php');
+    header('Location: ' . BASE_URL . 'dashboard.php');
     exit();
 }
 
@@ -15,16 +18,22 @@ $username = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $username = trim($_POST['username'] ?? '');
+    $v = new DfmsValidator($_POST);
+    $username = $v->string('username', 1, 50) ?? '';
     $password = $_POST['password'] ?? '';
 
-    if (empty($username) || empty($password)) {
+    if ($v->fails() || $password === '') {
+        // Deliberately generic: never reveal whether the username exists.
         $error = 'Please enter both username and password.';
-    } elseif (verifyLogin($username, $password)) {
-        header('Location: dashboard.php');
-        exit();
     } else {
-        $error = 'Invalid username or password.';
+        $result = verifyLogin($username, $password);
+        if ($result === true) {
+            header('Location: ' . BASE_URL . 'dashboard.php');
+            exit();
+        }
+        $error = $result === 'throttled'
+            ? 'Too many sign-in attempts. Please wait a few minutes and try again.'
+            : 'Invalid username or password.';
     }
 }
 ?>

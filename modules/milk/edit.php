@@ -1,60 +1,55 @@
 <?php
 require_once '../../includes/auth.php';
-require_once '../../config/database.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('milk.edit');
+require_once '../../includes/validation.php';
 
-$production_id = isset($_GET['id']) ? $_GET['id'] : null;
+requireAuth('milk.edit');
+
 $error_message = '';
 $success_message = '';
-$production = null;
 
+$production_id = dfms_route_id('id');
 $conn = getDBConnection();
-
-if ($production_id) {
-    $production = tenantFindOr404($conn, 'milk_production', 'production_id', $production_id);
-}
+$production = tenantFindOr404($conn, 'milk_production', 'production_id', $production_id);
 
 // Handle form submission
-if ($production && $_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $production_date = $_POST['production_date'] ?? '';
-    $total_milk_yield = $_POST['total_milk_yield'] ?? '';
+    $v = new DfmsValidator($_POST);
+    $production_date = $v->date('production_date');
+    $total_milk_yield = $v->decimal('total_milk_yield', ['min' => 0, 'max' => 200000]);
 
-    // Validate input
-    if (empty($production_date) || empty($total_milk_yield)) {
-        $error_message = "All fields are required.";
-    } elseif (!is_numeric($total_milk_yield) || $total_milk_yield < 0) {
-        $error_message = "Invalid milk yield value.";
+    if ($v->fails()) {
+        $error_message = $v->firstError();
     } else {
         try {
-            // Uniqueness is per farm — two farms may each log the same date.
-            $clash = tenantQuery(
+            $before = $production;
+            tenantExec(
                 $conn,
-                "SELECT production_id FROM milk_production WHERE {scope} AND production_date = ? AND production_id != ?",
-                [$production_date, $production['production_id']]
+                "UPDATE milk_production SET production_date = ?, total_milk_yield = ? WHERE production_id = ? AND {scope}",
+                [$production_date, $total_milk_yield, $production['production_id']]
             );
 
-            if ($clash) {
-                $error_message = "A production record already exists for this date.";
-            } else {
-                tenantExec(
-                    $conn,
-                    "UPDATE milk_production SET production_date = ?, total_milk_yield = ? WHERE production_id = ? AND {scope}",
-                    [$production_date, $total_milk_yield, $production['production_id']]
-                );
+            auditUpdate('milk_production', (int) $production['production_id'], $before, [
+                'production_date'  => $production_date,
+                'total_milk_yield' => $total_milk_yield,
+            ]);
 
-                $_SESSION['success_message'] = "Milk production record updated successfully";
-                header('Location: ' . BASE_URL . 'modules/milk/');
-                exit();
-            }
+            redirectWith('modules/milk/', 'success', 'Milk production record updated successfully.');
         } catch (PDOException $e) {
-            $error_message = safeError($e, "Update failed");
+            // Uniqueness is per farm and enforced by the database — two farms
+            // may each log the same date, one farm may not log it twice.
+            if ($e->getCode() === '23000') {
+                $error_message = 'A production record already exists for this date.';
+            } else {
+                $error_message = safeError($e, "Update failed");
+            }
         }
     }
 }

@@ -25,8 +25,13 @@ $cows = [
 
 // Upsert so the demo herd is restored even if rows were removed while
 // exploring the app.
+//
+// Every lookup below is scoped by farm_id. Animal tags are unique PER FARM
+// since migration 005, so matching on unique_id alone would now be ambiguous
+// (and used to work only because of the global-unique bug it replaced).
 $update = $conn->prepare(
-    "UPDATE cows SET name = ?, breed = ?, health_status = ?, reproductive_status = ?, lactation_status = ?, deleted_at = NULL WHERE unique_id = ?"
+    "UPDATE cows SET name = ?, breed = ?, health_status = ?, reproductive_status = ?, lactation_status = ?, deleted_at = NULL
+      WHERE unique_id = ? AND farm_id = 1"
 );
 $insert = $conn->prepare(
     "INSERT INTO cows (farm_id, unique_id, name, breed, health_status, reproductive_status, lactation_status, date_of_birth, notes)
@@ -35,7 +40,7 @@ $insert = $conn->prepare(
 foreach ($cows as $uniqueId => $c) {
     $update->execute([$c['name'], $c['breed'], $c['health'], $c['repro'], $c['lactation'], $uniqueId]);
     if ($update->rowCount() === 0) {
-        $exists = $conn->prepare("SELECT 1 FROM cows WHERE unique_id = ?");
+        $exists = $conn->prepare("SELECT 1 FROM cows WHERE unique_id = ? AND farm_id = 1");
         $exists->execute([$uniqueId]);
         if (!$exists->fetchColumn()) {
             $insert->execute([$uniqueId, $c['name'], $c['breed'], $c['health'], $c['repro'], $c['lactation']]);
@@ -118,5 +123,55 @@ echo "Seeded health events.\n";
 // ---- Alerts: recent timestamps, linked to their cow where relevant ----
 $conn->exec("UPDATE alerts SET alert_time = DATE_SUB(NOW(), INTERVAL FLOOR(1 + RAND() * 72) HOUR)");
 echo "Refreshed alert timestamps.\n";
+
+// ---- Cross-ORGANIZATION user, used by tests/security_regression_test.sh ----
+// Farm 2 sits in organization 2, so this account exercises true cross-tenant
+// separation at the organization boundary, not merely two farms of one
+// customer. Without a member on the other side, cross-org access can only be
+// tested from one direction.
+$rivalHash = password_hash('rival123', PASSWORD_BCRYPT);
+$stmt = $conn->prepare(
+    "INSERT INTO admin_users (username, password_hash, role) VALUES ('rival', ?, 'staff')
+     ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash)"
+);
+$stmt->execute([$rivalHash]);
+
+$rivalId = $conn->query("SELECT admin_id FROM admin_users WHERE username = 'rival'")->fetchColumn();
+if ($rivalId) {
+    $stmt = $conn->prepare(
+        "INSERT INTO farm_users (farm_id, admin_id, role) VALUES (2, ?, 'farm_manager')
+         ON DUPLICATE KEY UPDATE role = VALUES(role)"
+    );
+    $stmt->execute([$rivalId]);
+
+    $stmt = $conn->prepare(
+        "INSERT INTO organization_users (organization_id, admin_id, role) VALUES (2, ?, 'owner')
+         ON DUPLICATE KEY UPDATE role = VALUES(role)"
+    );
+    $stmt->execute([$rivalId]);
+    echo "Ensured cross-organization test user 'rival' (org 2 / farm 2).\n";
+}
+
+// ---- Membership-less user, for the missing-tenant-context test ----
+// Baseline audit C-1 was exactly this state: an authenticated account with no
+// farm_users row. It must render a handled "no farm assigned" page, not crash.
+$orphanHash = password_hash('orphan123', PASSWORD_BCRYPT);
+$stmt = $conn->prepare(
+    "INSERT INTO admin_users (username, password_hash, role) VALUES ('orphan', ?, 'staff')
+     ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash)"
+);
+$stmt->execute([$orphanHash]);
+$orphanId = $conn->query("SELECT admin_id FROM admin_users WHERE username = 'orphan'")->fetchColumn();
+if ($orphanId) {
+    // Deliberately NO farm_users / organization_users row.
+    $conn->prepare("DELETE FROM farm_users WHERE admin_id = ?")->execute([$orphanId]);
+    $conn->prepare("DELETE FROM organization_users WHERE admin_id = ?")->execute([$orphanId]);
+    echo "Ensured membership-less test user 'orphan' (no farm).\n";
+}
+
+// Print the ids the test suite needs, so it never hardcodes an autoincrement
+// value (baseline audit F-4).
+$rivalCow = $conn->query("SELECT cow_id FROM cows WHERE farm_id = 2 AND unique_id = 'RIVAL001'")->fetchColumn();
+echo "FIXTURE_RIVAL_COW_ID=" . ($rivalCow ?: '') . "\n";
 
 echo "Done.\n";

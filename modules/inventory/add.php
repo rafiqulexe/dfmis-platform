@@ -1,11 +1,14 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('inventory.create');
+require_once '../../includes/validation.php';
+
+requireAuth('inventory.create');
 
 $error = '';
 $success = '';
@@ -13,33 +16,52 @@ $success = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $item_name = trim($_POST['item_name'] ?? '');
-    $item_type = $_POST['item_type'] ?? '';
-    $unit = $_POST['unit'] ?? '';
-    $initial_quantity = $_POST['initial_quantity'] ?? 0;
+    $v = new DfmsValidator($_POST);
+    $item_name = $v->string('item_name', 1, 100);
+    $item_type = $v->string('item_type', 1, 50);
+    $unit = $v->string('unit', 1, 50);
+    $initial_quantity = $v->decimal('initial_quantity', ['nullable' => true, 'min' => 0, 'max' => 9999999]) ?? 0.0;
+    // Per-item reorder level replaces the threshold that was hardcoded as 10
+    // in three places and was unit-blind (baseline audit C-9).
+    $reorder_level = $v->decimal('reorder_level', ['nullable' => true, 'min' => 0, 'max' => 9999999]) ?? 10.0;
 
-    if (empty($item_name) || empty($item_type) || empty($unit)) {
-        $error = 'Please fill in all required fields';
+    if ($v->fails()) {
+        $error = $v->firstError();
     } else {
         try {
             $conn = getDBConnection();
-            $conn->beginTransaction();
 
-            // Add item
-            $stmt = $conn->prepare("INSERT INTO inventory_items (item_name, item_type, unit, farm_id) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$item_name, $item_type, $unit, currentFarmId()]);
-            $item_id = $conn->lastInsertId();
+            // Baseline audit C-5: the old catch called rollBack()
+            // unconditionally, which throws when no transaction is open —
+            // inside the handler, so it escaped as a fatal. tenantTransaction()
+            // makes the correct shape the only shape.
+            $itemId = tenantTransaction($conn, function (PDO $conn) use ($item_name, $item_type, $unit, $initial_quantity, $reorder_level) {
+                $itemId = tenantInsert($conn, 'inventory_items', [
+                    'item_name'     => $item_name,
+                    'item_type'     => $item_type,
+                    'unit'          => $unit,
+                    'reorder_level' => $reorder_level,
+                ]);
 
-            // Set initial quantity
-            if ($initial_quantity > 0) {
-                $stmt = $conn->prepare("INSERT INTO inventory_levels (item_id, quantity, farm_id) VALUES (?, ?, ?)");
-                $stmt->execute([$item_id, $initial_quantity, currentFarmId()]);
-            }
+                // Always create a level row, even at zero, so an item always
+                // has a stock record to adjust rather than a missing join.
+                tenantInsert($conn, 'inventory_levels', [
+                    'item_id'  => $itemId,
+                    'quantity' => $initial_quantity,
+                ]);
 
-            $conn->commit();
+                return $itemId;
+            });
+
+            auditCreate('inventory_item', $itemId, [
+                'item_name'        => $item_name,
+                'item_type'        => $item_type,
+                'unit'             => $unit,
+                'initial_quantity' => $initial_quantity,
+                'reorder_level'    => $reorder_level,
+            ]);
             $success = 'Item added successfully';
         } catch (PDOException $e) {
-            $conn->rollBack();
             $error = safeError($e, 'Error adding item');
         }
     }

@@ -1,22 +1,18 @@
 <?php
 require_once '../../includes/auth.php';
-require_once '../../config/database.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('cows.delete');
+require_once '../../includes/validation.php';
 
-$cow_id = isset($_GET['id']) ? $_GET['id'] : null;
+requireAuth('cows.delete');
+
 $error_message = '';
 
-if (!$cow_id) {
-    $_SESSION['error_message'] = "No cow ID provided.";
-    header('Location: ' . BASE_URL . 'modules/cows/');
-    exit();
-}
-
+$cow_id = dfms_route_id('id');
 $conn = getDBConnection();
 $cow = tenantFindOr404($conn, 'cows', 'cow_id', $cow_id, 'deleted_at IS NULL');
 
@@ -33,9 +29,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             [$cow['cow_id']]
         );
 
-        $_SESSION['success_message'] = "Cow archived successfully.";
-        header('Location: ' . BASE_URL . 'modules/cows/');
-        exit();
+        auditLog('cow.archive', 'cow', (int) $cow['cow_id'], [
+            'unique_id' => $cow['unique_id'],
+            'name'      => $cow['name'] ?? null,
+            'deleted_at' => null,
+        ], ['deleted_at' => date('Y-m-d H:i:s')]);
+
+        redirectWith('modules/cows/', 'success', 'Cow archived successfully.');
     } catch (PDOException $e) {
         $error_message = safeError($e, "Deletion failed");
     }

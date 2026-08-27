@@ -1,11 +1,14 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/errors.php';
 require_once '../../includes/csrf.php';
+require_once '../../includes/audit.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
-requireLogin();
-requirePermission('milk.create');
+require_once '../../includes/validation.php';
+
+requireAuth('milk.create');
 
 $error = '';
 $success = '';
@@ -13,28 +16,35 @@ $success = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
-    $production_date = $_POST['production_date'] ?? '';
-    $total_milk_yield = $_POST['total_milk_yield'] ?? '';
+    $v = new DfmsValidator($_POST);
+    $production_date = $v->date('production_date');
+    // Baseline audit C-6: this accepted any string while milk/edit.php
+    // checked is_numeric. A herd cannot produce a negative or absurd yield.
+    $total_milk_yield = $v->decimal('total_milk_yield', ['min' => 0, 'max' => 200000]);
 
-    if (empty($production_date) || empty($total_milk_yield)) {
-        $error = 'Please fill in all required fields';
+    if ($v->fails()) {
+        $error = $v->firstError();
     } else {
         try {
             $conn = getDBConnection();
-
-            // Check if entry already exists for this date
-            $stmt = $conn->prepare("SELECT production_id FROM milk_production WHERE production_date = ? AND farm_id = ?");
-            $stmt->execute([$production_date, currentFarmId()]);
-
-            if ($stmt->fetch()) {
-                $error = 'A production record already exists for this date';
-            } else {
-                $stmt = $conn->prepare("INSERT INTO milk_production (production_date, total_milk_yield, farm_id) VALUES (?, ?, ?)");
-                $stmt->execute([$production_date, $total_milk_yield, currentFarmId()]);
-                $success = 'Production record added successfully';
-            }
+            // Baseline audit T-5: the old check-then-insert was a race. The
+            // database now enforces one record per farm per day, so we insert
+            // and let the constraint decide.
+            $id = tenantInsert($conn, 'milk_production', [
+                'production_date'  => $production_date,
+                'total_milk_yield' => $total_milk_yield,
+            ]);
+            auditCreate('milk_production', $id, [
+                'production_date'  => $production_date,
+                'total_milk_yield' => $total_milk_yield,
+            ]);
+            $success = 'Production record added successfully';
         } catch (PDOException $e) {
-            $error = safeError($e, 'Error adding production record');
+            if ($e->getCode() === '23000') {
+                $error = 'A production record already exists for this date.';
+            } else {
+                $error = safeError($e, 'Error adding production record');
+            }
         }
     }
 }
