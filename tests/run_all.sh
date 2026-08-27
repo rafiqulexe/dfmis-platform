@@ -50,7 +50,7 @@ record() { # record <suite name> <exit code>
 }
 
 # ---- 1. syntax ------------------------------------------------------------
-banner "1/4  Syntax check (php -l)"
+banner "1/6  Syntax check (php -l)"
 LINT_FAIL=0
 LINT_OK=0
 while IFS= read -r file; do
@@ -66,33 +66,45 @@ echo "  clean: $LINT_OK   failing: $LINT_FAIL"
 record "syntax check" "$LINT_FAIL"
 
 # ---- 2. unit --------------------------------------------------------------
-banner "2/4  Unit tests — validation layer"
+banner "2/6  Unit tests — validation layer"
 "$PHP" "$ROOT/tests/validation_unit_test.php"
 record "validation unit tests" "$?"
+
+# ---- 3. unit: international foundation (Phase 2) --------------------------
+# Needs the database (it exercises the settings hierarchy against real rows)
+# but not the web server, so it runs before the server check.
+banner "3/6  Unit tests — international platform foundation"
+"$PHP" "$ROOT/tests/international_unit_test.php"
+record "international unit tests" "$?"
 
 # ---- server required from here on ----------------------------------------
 if ! curl -s -o /dev/null --max-time 5 "$BASE/index.php" 2>/dev/null; then
     echo ""
     echo "############################################################"
-    echo "# SKIPPED 3/4 and 4/4 — no dev server at $BASE"
+    echo "# SKIPPED integration suites — no dev server at $BASE"
     echo "# Start one with:  $PHP -S localhost:8000 -t ."
     echo "############################################################"
     echo ""
-    echo "Suites run: $SUITES_RUN   failed: $SUITES_FAILED   (2 skipped)"
+    echo "Suites run: $SUITES_RUN   failed: $SUITES_FAILED   (3 skipped)"
     # A skipped integration suite is not a pass. Fail loudly so CI cannot go
     # green just because nobody started the server.
     exit 1
 fi
 
 # ---- 3. tenant isolation --------------------------------------------------
-banner "3/4  Integration — tenant isolation + RBAC"
+banner "4/6  Integration — tenant isolation + RBAC"
 bash "$ROOT/tests/tenant_isolation_test.sh"
 record "tenant isolation" "$?"
 
 # ---- 4. security regression ----------------------------------------------
-banner "4/4  Integration — security regression"
+banner "5/6  Integration — security regression"
 bash "$ROOT/tests/security_regression_test.sh"
 record "security regression" "$?"
+
+# ---- 6. international isolation (Phase 2) --------------------------------
+banner "6/6  Integration — international settings isolation"
+bash "$ROOT/tests/international_isolation_test.sh"
+record "international isolation" "$?"
 
 # ---- summary --------------------------------------------------------------
 echo ""

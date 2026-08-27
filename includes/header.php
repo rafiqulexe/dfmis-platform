@@ -14,6 +14,9 @@ require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/tenant.php';
 require_once __DIR__ . '/repository.php';
 require_once __DIR__ . '/permissions.php';
+require_once __DIR__ . '/settings.php';
+require_once __DIR__ . '/farm_types.php';
+require_once __DIR__ . '/features.php';
 require_once __DIR__ . '/navigation.php';
 require_once __DIR__ . '/components.php';
 

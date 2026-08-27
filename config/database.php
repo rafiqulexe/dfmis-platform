@@ -40,6 +40,21 @@ ini_set('log_errors', '1');
 error_reporting(E_ALL);
 
 // ---------------------------------------------------------------------------
+// Clock discipline — PHP side. See the DB side in getDBConnection() below.
+//
+// The application runs entirely in UTC and converts to the farm's timezone
+// only at the moment of display (includes/i18n.php, includes/settings.php).
+//
+// WHY THIS IS NEEDED: before Phase 2 this process inherited the host's
+// timezone (Europe/Berlin, +02:00) while MySQL's SYSTEM zone was +06:00 — so
+// alerts.alert_time, a DATETIME with no zone of its own, was written by PHP
+// date() on one clock and by the seeder's NOW() on another. Two clocks, one
+// column. Pinning both ends to UTC makes every new write unambiguous.
+//
+// Historical rows are NOT rewritten; see docs/DFMIS_INTERNATIONAL_ARCHITECTURE.md.
+date_default_timezone_set('UTC');
+
+// ---------------------------------------------------------------------------
 // Database configuration
 // ---------------------------------------------------------------------------
 define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
@@ -142,6 +157,18 @@ function getDBConnection()
                 PDO::ATTR_STRINGIFY_FETCHES  => false,
             ]
         );
+
+        // Clock discipline — database side. TIMESTAMP columns are converted by
+        // the engine using the SESSION time zone, so leaving it at SYSTEM made
+        // every timestamp read depend on the host's regional settings. Pinning
+        // it to UTC makes NOW(), CURDATE() and every TIMESTAMP read/write
+        // deterministic and identical to the PHP side.
+        //
+        // The stored instant never changes — TIMESTAMP is UTC internally
+        // either way. What changes is that it is now *read back* as UTC, which
+        // is what the display layer expects before converting to farm time.
+        $conn->exec("SET time_zone = '+00:00'");
+
         return $conn;
     } catch (PDOException $e) {
         error_log('Database connection failed: ' . $e->getMessage());

@@ -64,6 +64,18 @@ const DFMS_PERMISSIONS = [
     'files.view'       => ['farm_manager', 'veterinarian', 'staff', 'accountant', 'viewer'],
     'files.upload'     => ['farm_manager', 'veterinarian', 'staff'],
     'files.delete'     => ['farm_manager'],
+
+    // Phase 2 — international configuration.
+    // Anyone who works on the farm may SEE which timezone, currency and units
+    // are in force; misreading those is a real operational hazard. Changing
+    // them is a farm manager decision, because a unit or timezone change
+    // alters how every existing record is presented to everyone.
+    'settings.view'    => ['farm_manager', 'veterinarian', 'staff', 'accountant', 'viewer'],
+    'settings.farm'    => ['farm_manager'],
+    // Feature rollout at FARM scope. Organization scope is governed by
+    // DFMS_ORG_PERMISSIONS['org.manage'] instead — see modules/settings/features.php.
+    'settings.features' => ['farm_manager'],
+    'notifications.manage' => ['farm_manager', 'veterinarian', 'staff', 'accountant', 'viewer'],
 ];
 
 // Organization-level roles, used by organization-scoped actions. Farm-level

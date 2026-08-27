@@ -38,9 +38,17 @@ try {
     $pregnantCount = (int) tenantScalar($conn, "SELECT COUNT(*) FROM cows WHERE {scope} AND deleted_at IS NULL AND reproductive_status = 'pregnant'");
     $lactatingCount = (int) tenantScalar($conn, "SELECT COUNT(*) FROM cows WHERE {scope} AND deleted_at IS NULL AND lactation_status = 'lactating'");
 
-    $todayMilk = (float) tenantScalar($conn, "SELECT total_milk_yield FROM milk_production WHERE {scope} AND production_date = CURDATE()", [], 0);
-    $last7Avg = (float) tenantScalar($conn, "SELECT AVG(total_milk_yield) FROM milk_production WHERE {scope} AND production_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)", [], 0);
-    $last30Avg = (float) tenantScalar($conn, "SELECT AVG(total_milk_yield) FROM milk_production WHERE {scope} AND production_date >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)", [], 0);
+    // Date boundaries come from the FARM's calendar day, not the database
+    // server's. CURDATE() answers "what day is it where the server is", which
+    // is a different day from the farm's for several hours of every day once
+    // the two are in different timezones. Computed once, bound as parameters.
+    $today = farmToday();
+    $sevenDaysAgo = farmDateOffset(-6);
+    $thirtyDaysAgo = farmDateOffset(-29);
+
+    $todayMilk = (float) tenantScalar($conn, "SELECT total_milk_yield FROM milk_production WHERE {scope} AND production_date = ?", [$today], 0);
+    $last7Avg = (float) tenantScalar($conn, "SELECT AVG(total_milk_yield) FROM milk_production WHERE {scope} AND production_date >= ?", [$sevenDaysAgo], 0);
+    $last30Avg = (float) tenantScalar($conn, "SELECT AVG(total_milk_yield) FROM milk_production WHERE {scope} AND production_date >= ?", [$thirtyDaysAgo], 0);
 
     // Baseline audit C-4: this had no date bound, so the chart labelled
     // "30-Day" plotted the entire history and serialized all of it into the
@@ -48,8 +56,9 @@ try {
     $milkSeries = tenantQuery(
         $conn,
         "SELECT production_date, total_milk_yield FROM milk_production
-          WHERE {scope} AND production_date >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
-          ORDER BY production_date ASC"
+          WHERE {scope} AND production_date >= ?
+          ORDER BY production_date ASC",
+        [$thirtyDaysAgo]
     );
 
     $insights = getFarmAdvisorInsights($conn, $farmId);

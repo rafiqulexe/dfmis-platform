@@ -14,7 +14,15 @@
 // ============================================================================
 
 require_once __DIR__ . '/permissions.php';
+require_once __DIR__ . '/farm_types.php';
 
+// Each item may declare a `capability`. An item whose capability the active
+// farm does not have is hidden — that is how a future poultry farm stops
+// seeing "Milk Production" without a single `if ($type === 'dairy')` anywhere
+// outside includes/farm_types.php.
+//
+// Capability is INDEPENDENT of permission. Capability asks "does this farm do
+// this?"; permission asks "may this user?". Both must pass.
 function dfms_nav_sections() {
     return [
         [
@@ -26,11 +34,11 @@ function dfms_nav_sections() {
         [
             'label' => 'Herd',
             'items' => [
-                ['key' => 'livestock',    'label' => 'Livestock',       'url' => 'modules/cows/',   'icon' => 'livestock', 'permission' => 'cows.view'],
-                ['key' => 'milk',         'label' => 'Milk Production', 'url' => 'modules/milk/',   'icon' => 'droplet',   'permission' => 'milk.view'],
-                ['key' => 'health',       'label' => 'Health',          'url' => 'modules/health/', 'icon' => 'heart',     'permission' => 'health.view'],
-                ['key' => 'reproduction', 'label' => 'Reproduction',    'url' => null,              'icon' => 'sprout',    'permission' => 'health.view', 'status' => 'soon'],
-                ['key' => 'feeding',      'label' => 'Feeding',         'url' => 'modules/feeding/','icon' => 'wheat',     'permission' => 'feeding.view'],
+                ['key' => 'livestock',    'label' => 'Livestock',       'url' => 'modules/cows/',   'icon' => 'livestock', 'permission' => 'cows.view',    'capability' => 'animal_registry'],
+                ['key' => 'milk',         'label' => 'Milk Production', 'url' => 'modules/milk/',   'icon' => 'droplet',   'permission' => 'milk.view',    'capability' => 'milk_production'],
+                ['key' => 'health',       'label' => 'Health',          'url' => 'modules/health/', 'icon' => 'heart',     'permission' => 'health.view',  'capability' => 'health_events'],
+                ['key' => 'reproduction', 'label' => 'Reproduction',    'url' => null,              'icon' => 'sprout',    'permission' => 'health.view',  'capability' => 'reproduction', 'status' => 'soon'],
+                ['key' => 'feeding',      'label' => 'Feeding',         'url' => 'modules/feeding/','icon' => 'wheat',     'permission' => 'feeding.view', 'capability' => 'feeding'],
             ],
         ],
         [
@@ -52,11 +60,20 @@ function dfms_nav_sections() {
             'items' => [
                 // The audit log now has both a writer and a reader (baseline
                 // audit D-1); `audit.view` is restricted to farm managers.
-                ['key' => 'audit',    'label' => 'Audit Log', 'url' => 'modules/audit/', 'icon' => 'inbox',    'permission' => 'audit.view'],
-                ['key' => 'settings', 'label' => 'Settings',  'url' => null,             'icon' => 'settings', 'permission' => null, 'status' => 'soon'],
+                ['key' => 'audit',    'label' => 'Audit Log', 'url' => 'modules/audit/',    'icon' => 'inbox',    'permission' => 'audit.view'],
+                ['key' => 'settings', 'label' => 'Settings',  'url' => 'modules/settings/', 'icon' => 'settings', 'permission' => 'settings.view'],
             ],
         ],
     ];
+}
+
+// Should this nav item be shown at all on the active farm?
+// Capability first (does the farm do this?), then permission (may the user?).
+function dfms_nav_item_visible(array $item): bool {
+    if (!empty($item['capability']) && !farmHasCapability($item['capability'])) {
+        return false;
+    }
+    return $item['permission'] === null || hasPermission($item['permission']);
 }
 
 // Sections with items the current user may not see removed, and sections
@@ -64,9 +81,7 @@ function dfms_nav_sections() {
 function dfms_visible_nav() {
     $visible = [];
     foreach (dfms_nav_sections() as $section) {
-        $items = array_values(array_filter($section['items'], function ($item) {
-            return $item['permission'] === null || hasPermission($item['permission']);
-        }));
+        $items = array_values(array_filter($section['items'], 'dfms_nav_item_visible'));
         if ($items) {
             $section['items'] = $items;
             $visible[] = $section;
@@ -80,14 +95,12 @@ function dfms_visible_nav() {
 function dfms_bottom_nav() {
     $candidates = [
         ['key' => 'dashboard', 'label' => 'Home',      'url' => 'dashboard.php',    'icon' => 'grid',      'permission' => null],
-        ['key' => 'livestock', 'label' => 'Livestock', 'url' => 'modules/cows/',    'icon' => 'livestock', 'permission' => 'cows.view'],
-        ['key' => 'milk',      'label' => 'Milk',      'url' => 'modules/milk/',    'icon' => 'droplet',   'permission' => 'milk.view'],
-        ['key' => 'health',    'label' => 'Health',    'url' => 'modules/health/',  'icon' => 'heart',     'permission' => 'health.view'],
+        ['key' => 'livestock', 'label' => 'Livestock', 'url' => 'modules/cows/',    'icon' => 'livestock', 'permission' => 'cows.view', 'capability' => 'animal_registry'],
+        ['key' => 'milk',      'label' => 'Milk',      'url' => 'modules/milk/',    'icon' => 'droplet',   'permission' => 'milk.view', 'capability' => 'milk_production'],
+        ['key' => 'health',    'label' => 'Health',    'url' => 'modules/health/',  'icon' => 'heart',     'permission' => 'health.view', 'capability' => 'health_events'],
         ['key' => 'alerts',    'label' => 'Alerts',    'url' => 'modules/alerts/',  'icon' => 'bell',      'permission' => 'alerts.view'],
     ];
-    $items = array_values(array_filter($candidates, function ($item) {
-        return $item['permission'] === null || hasPermission($item['permission']);
-    }));
+    $items = array_values(array_filter($candidates, 'dfms_nav_item_visible'));
     return array_slice($items, 0, 5);
 }
 

@@ -44,7 +44,26 @@ Read-only reconnaissance and baseline verification. No application code modified
 
 ---
 
-## Phase 1 · Foundation Hardening
+## Phase 1 · Foundation Hardening — **COMPLETE**
+
+Commit `ae249b9` — *security: harden DFMIS platform foundation*.
+
+Every Critical and High finding from the baseline audit is closed. 180 assertions
+passing at the time of completion. Delivered: schema integrity migration (005),
+centralized authorization (`requireAuth`), centralized validation
+(`DfmsValidator`), audit logging wired into every mutation, safe error handling,
+hardened sessions, login throttling, tenant-aware repository helpers,
+transactions, a cross-engine migration runner, and a security regression suite.
+
+**Not delivered, deliberately:** Composer / PSR-4 / PHPUnit and CI (§1.6). Adding
+them requires restructuring a procedural codebase, which conflicts with the
+project's "do not rewrite" constraint. Carried forward to Phase 2's outstanding
+work below.
+
+See [`DFMIS_SECURITY_ARCHITECTURE.md`](./DFMIS_SECURITY_ARCHITECTURE.md).
+
+<details>
+<summary>Original Phase 1 plan</summary>
 
 Fix what is broken and install what makes further work safe. **No new features.**
 This phase pays down the audit and nothing else.
@@ -103,31 +122,70 @@ This phase pays down the audit and nothing else.
 **Exit criteria** — every Critical and High finding closed; PHPUnit + PHPStan + CI
 green; migrations idempotent and cross-engine; audit log recording all mutations.
 
+</details>
+
 ---
 
-## Phase 2 · International Platform Architecture
+## Phase 2 · International Platform Architecture — **PARTIALLY COMPLETE**
 
-Restructure for many customers in many countries. Structural only — no domain
-features.
+This phase was scoped in two halves. The **international configuration
+foundation** is delivered; the **platform/API structural work** is not, and is
+listed as outstanding below. Phase 2 is therefore *not* wholesale complete.
 
-- Application skeleton: front controller, routing, dependency container, service
-  layer, PSR-4 namespaces. Existing procedural pages migrate incrementally behind
-  the router, not in a big-bang rewrite.
-- **HTTP API layer** — versioned JSON endpoints (`/api/v1/`), token authentication,
-  consistent error envelope, rate limiting, OpenAPI specification (Blocker 5).
+### 2A · International foundation — **COMPLETE**
+
+Commit `feat: establish international platform foundation`. Migration 006.
+412 assertions passing across 6 suites.
+
+- Configuration hierarchy — farm → organization → platform default, resolved once
+  in `includes/settings.php`; NULL means inherit at every level
+- Organization international settings — legal name, ISO 3166-1 country, IANA
+  timezone, BCP 47 locale, ISO 4217 currency, measurement system
+- Farm-level overrides for all of the above, independently overridable
+- International location model on `locations` — deliberately generic
+  `admin_area` / `locality`, no country-specific address assumptions
+- Timezone strategy — UTC storage, farm-timezone display; date-only values never
+  shifted; PHP and MySQL both pinned to UTC, fixing a real two-clock defect
+- Currency foundation — ISO 4217 validation, per-currency decimal precision
+  (JPY 0, BHD 3), centralized formatting. No monetary columns exist yet, so no
+  historical amount can change meaning
+- Canonical measurement strategy — metric storage (kg / L / °C), conversion at
+  display only; reinterprets zero existing values because the data was already
+  metric
+- Locale foundation — translation mechanism with fallback chain, `en` complete
+  and `bn` deliberately partial to exercise it. **Not** full multilingual support
+- Farm-type capability model, replacing scattered `if ($farmType === 'dairy')`
+- Subscription foundation extending the existing `plan`/`status` columns —
+  advisory limits, **no enforcement**, nobody restricted
+- Feature flags — three scopes, registry defaults, tenant-isolated
+- Notification preferences — model only, no delivery; `alerts` untouched
+- Organization-level authorization activated (`organization_users` is now read)
+- Settings UI for organization, farm, features and notifications
+
+See [`DFMIS_INTERNATIONAL_ARCHITECTURE.md`](./DFMIS_INTERNATIONAL_ARCHITECTURE.md)
+and [`DFMIS_SAAS_FOUNDATION.md`](./DFMIS_SAAS_FOUNDATION.md).
+
+### 2B · Platform & API structure — **NOT STARTED**
+
+Still outstanding from the original Phase 2 scope:
+
+- Engineering foundation carried over from Phase 1.6: **Composer + PSR-4
+  autoloading, PHPUnit, PHPStan, CI**. Still the largest structural gap.
+- Application skeleton: front controller, routing, service layer. Existing
+  procedural pages migrate incrementally behind the router, never big-bang.
+- **HTTP API layer** — versioned JSON endpoints (`/api/v1/`), token
+  authentication, consistent error envelope, rate limiting, OpenAPI spec.
   Prerequisite for Phases 7 and 11.
-- Organization-level authorization — activate `organization_users` and its
-  `owner`/`admin`/`member` roles, which no code currently reads.
-- Multi-farm switching UI (**D-2**) — the tenancy work is already done.
-- Platform admin console, and resolution of the T-6 privilege gap.
+- Platform admin console, and the T-6 privilege gap it depends on.
 - Tenant onboarding: organization signup, farm provisioning, user invitation.
-- Configuration and secrets management for multiple environments.
+  **Organization member management** is a concrete near-term gap — org roles can
+  currently only be set by seeding.
 - Structured logging, health checks, error tracking.
-- Finish the design-system migration and drop the Tailwind Play CDN (**F-1, F-2**);
-  add pagination as each list page converts (**F-3**).
+- Finish the design-system migration and drop the Tailwind Play CDN (**F-1, F-2**).
 
-**Exit criteria** — a second organization can be onboarded end-to-end without manual
-SQL; API v1 documented and authenticated; isolation suite extended to cover the API.
+**Exit criteria for 2B** — a second organization can be onboarded end-to-end
+without manual SQL; API v1 documented and authenticated; isolation suite extended
+to cover the API.
 
 ---
 
@@ -393,9 +451,33 @@ becomes. Consider pulling the schema change forward into Phase 3.
 
 ## Current position
 
-**Phase 0 complete. Phase 1 not started. No application code has been modified.**
+**Phase 0 complete. Phase 1 complete. Phase 2A complete; Phase 2B not started.**
 
-The immediate next action is Phase 1.1 — the schema integrity migration — which
-closes the single Critical finding and three of the seven High findings in one
-reviewable change. It should be written against a PHPUnit harness (Phase 1.6), so in
-practice 1.6's test framework and migration runner come first.
+| Phase | Status | Commit |
+|---|---|---|
+| 0 · Baseline | complete | `50277c8` |
+| 1 · Foundation Hardening | complete | `ae249b9` |
+| 2A · International foundation | complete | `feat: establish international platform foundation` |
+| 2B · Platform & API structure | **not started** | — |
+| 3+ | not started | — |
+
+Test suite: **412 assertions across 6 suites, all passing** (`bash tests/run_all.sh`).
+Schema at migration **006**.
+
+The immediate next action is **Phase 2B**, and within it the engineering
+foundation — Composer, PSR-4 autoloading, PHPUnit, PHPStan and CI — which has now
+been deferred twice. Every subsequent phase compounds without it: there is still
+no automated gate preventing a tenancy regression from reaching a branch, and
+`php -l` cannot catch the class of type error that caused baseline finding C-1.
+
+Phase 3 should not begin until 2B's testing and autoloading work lands.
+
+### Sequencing note carried forward
+
+Phase 12 (Internationalization) is **substantially de-risked** by Phase 2A: the
+configuration hierarchy, timezone strategy, currency handling, unit conversion,
+`utf8mb4` and the translation mechanism all now exist. What remains for Phase 12
+is breadth — externalizing the strings still inline in module templates, RTL
+layout, and locale-aware date patterns — rather than architecture. Each phase
+from here should externalize its own strings as it writes them, so Phase 12 does
+not become a single enormous sweep.

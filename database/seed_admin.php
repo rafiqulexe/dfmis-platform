@@ -70,4 +70,40 @@ if ($hasMembership) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Organization membership.
+//
+// Migration 003 backfilled organization_users from admin_users, but it ran
+// BEFORE this script first created any accounts, so no farm-1 user ever got an
+// organization row. Migration 006 backfilled them as 'member' — deliberately
+// without authority, since a migration must not silently hand anyone control
+// of an organization.
+//
+// Granting the demo `admin` account ownership is that explicit decision, made
+// here where it is visible, so organization-level settings are reachable in
+// development without depending on the platform-admin bypass.
+// ---------------------------------------------------------------------------
+$hasOrgMembership = $conn->query("SHOW TABLES LIKE 'organization_users'")->fetchColumn();
+if ($hasOrgMembership) {
+    $orgLink = $conn->prepare(
+        "INSERT INTO organization_users (organization_id, admin_id, role) VALUES (1, ?, ?)
+         ON DUPLICATE KEY UPDATE role = VALUES(role)"
+    );
+    $lookup = $conn->prepare("SELECT admin_id FROM admin_users WHERE username = ?");
+
+    // Only `admin` is elevated. Everyone else stays 'member'.
+    $orgRoles = ['admin' => 'owner'];
+
+    foreach ($accounts as $account) {
+        $lookup->execute([$account['username']]);
+        $adminId = $lookup->fetchColumn();
+        if (!$adminId) {
+            continue;
+        }
+        $orgRole = $orgRoles[$account['username']] ?? 'member';
+        $orgLink->execute([$adminId, $orgRole]);
+        echo "  org role:  {$account['username']} -> {$orgRole}\n";
+    }
+}
+
 echo "Done. Demo passwords are unchanged (e.g. admin123) and stored hashed.\n";

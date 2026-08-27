@@ -5,6 +5,10 @@
 // on top of, narrating the same underlying signals in natural language.
 // Shared so cow-profile "AI Health Summary" etc. can reuse the same source.
 
+// Date windows are resolved in the farm's timezone via the Phase 2
+// configuration hierarchy rather than the database server's clock.
+require_once __DIR__ . '/settings.php';
+
 const DFMS_SEVERITY_RANK = ['critical' => 0, 'warning' => 1, 'info' => 2, 'positive' => 3];
 
 // Maps an alert's generic (entity_type, entity_id) target to the page that
@@ -37,15 +41,23 @@ function getFarmAdvisorInsights(PDO $conn, ?int $farmId): array {
 
     $insights = [];
 
+    // Date windows are computed in THIS FARM's timezone, not the database
+    // server's — see dashboard.php for the same reasoning. Resolved per farm
+    // id rather than from the active tenant, so this function stays correct
+    // if it is ever called for a farm other than the current one.
+    $timezone = dfms_setting('timezone', $farmId);
+    $day6 = dfms_date_offset($timezone, -6);
+    $day13 = dfms_date_offset($timezone, -13);
+
     // ---- Milk production trend ----
     $stmt = $conn->prepare("
         SELECT
-            AVG(CASE WHEN production_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) THEN total_milk_yield END) AS last7,
-            AVG(CASE WHEN production_date >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
-                      AND production_date <  DATE_SUB(CURDATE(), INTERVAL 6 DAY) THEN total_milk_yield END) AS prior7
+            AVG(CASE WHEN production_date >= ? THEN total_milk_yield END) AS last7,
+            AVG(CASE WHEN production_date >= ?
+                      AND production_date <  ? THEN total_milk_yield END) AS prior7
         FROM milk_production WHERE farm_id = ?
     ");
-    $stmt->execute([$farmId]);
+    $stmt->execute([$day6, $day13, $day6, $farmId]);
     $trend = $stmt->fetch(PDO::FETCH_ASSOC);
     $last7 = (float) ($trend['last7'] ?? 0);
     $prior7 = (float) ($trend['prior7'] ?? 0);
@@ -151,13 +163,16 @@ function getAttentionItems(PDO $conn, ?int $farmId, int $limit = 6): array {
 
     $items = [];
 
+    // Farm-timezone window, as in getFarmAdvisorInsights().
+    $fourteenDaysAgo = dfms_date_offset(dfms_setting('timezone', $farmId), -14);
+
     $stmt = $conn->prepare("
         SELECT h.event_type, h.severity, h.event_date, h.description, c.cow_id, c.unique_id, c.name
         FROM health_events h JOIN cows c ON h.cow_id = c.cow_id AND c.farm_id = h.farm_id
-        WHERE h.farm_id = ? AND h.severity IN ('urgent','moderate') AND h.event_date >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+        WHERE h.farm_id = ? AND h.severity IN ('urgent','moderate') AND h.event_date >= ?
         ORDER BY FIELD(h.severity, 'urgent', 'moderate'), h.event_date DESC
     ");
-    $stmt->execute([$farmId]);
+    $stmt->execute([$farmId, $fourteenDaysAgo]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $items[] = [
             'severity' => $row['severity'] === 'urgent' ? 'critical' : 'warning',
