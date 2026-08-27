@@ -142,4 +142,30 @@ if ($status !== 0) {
     exit(1);
 }
 
+// ---------------------------------------------------------------------------
+// Seed the test database.
+//
+// Phase 2B left the HTTP suites running against the DEVELOPMENT database
+// because the test schema had no accounts to log in with. Seeding it here is
+// what makes an isolated HTTP test run possible at all:
+//
+//   php tools/test-db.php --create
+//   DB_NAME=dfms_test php -S localhost:8100 -t .
+//   DFMS_BASE_URL=http://localhost:8100 bash tests/animal_isolation_test.sh
+//
+// DB_NAME is still pointing at the test schema from the migration step above,
+// so both seeders write there and never touch development data.
+// ---------------------------------------------------------------------------
+echo "  seeding accounts and demo data …\n";
+foreach (['seed_admin.php', 'seed_demo_data.php'] as $seeder) {
+    $seedOut = [];
+    exec("$php " . escapeshellarg($root . '/database/' . $seeder) . " 2>&1", $seedOut, $seedStatus);
+    if ($seedStatus !== 0) {
+        fwrite(STDERR, "Seeder $seeder failed against $testDbName:\n");
+        fwrite(STDERR, implode("\n", $seedOut) . "\n");
+        exit(1);
+    }
+    echo "    $seeder ok\n";
+}
+
 echo "\nDone. Point tests at it with:  DB_NAME=$testDbName\n";

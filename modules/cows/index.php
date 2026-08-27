@@ -1,4 +1,13 @@
 <?php
+// ============================================================================
+// LIVESTOCK LIST — search, filter, paginate
+//
+// Every query runs through animalSearch(), which is tenant-scoped. There is no
+// code path here that reads animals across farms, including the identifier
+// search: its subquery is constrained to the same farm, so searching an RFID
+// can never confirm that the tag exists on another tenant's animal.
+// ============================================================================
+
 require_once '../../includes/auth.php';
 require_once '../../includes/errors.php';
 require_once '../../includes/audit.php';
@@ -6,156 +15,224 @@ require_once '../../includes/functions.php';
 require_once '../../includes/permissions.php';
 require_once '../../includes/repository.php';
 require_once '../../includes/validation.php';
+require_once '../../includes/settings.php';
+require_once '../../includes/livestock.php';
 
 requireAuth('cows.view');
 
 $error_message = '';
-$cows = [];
-$perPage = 50;
-$page = 1;
-$totalPages = 1;
-$totalCows = 0;
+$result = ['items' => [], 'total' => 0, 'pages' => 1, 'page' => 1];
+$locations = [];
+$breeds = [];
+
+$v = new DfmsValidator($_GET);
+$filters = [
+    'search'           => $v->string('search', 0, 100, ['nullable' => true]) ?? '',
+    'species'          => $v->enum('species', array_keys(DFMS_SPECIES), ['nullable' => true]),
+    'sex'              => $v->enum('sex', ['female', 'male'], ['nullable' => true]),
+    'lifecycle_status' => $v->enum('lifecycle_status', array_keys(DFMS_LIFECYCLE_STATUSES), ['nullable' => true]),
+    'location_id'      => $v->id('location_id', ['nullable' => true]),
+    'breed'            => $v->string('breed', 0, 100, ['nullable' => true]),
+    'include_archived' => isset($_GET['include_archived']),
+];
+$page = $v->integer('page', ['nullable' => true, 'min' => 1, 'max' => 100000]) ?? 1;
+
+// A bad filter value is a bad request, not a reason to show the wrong animals.
+if ($v->fails()) {
+    $error_message = $v->firstError();
+    $filters = ['include_archived' => false];
+    $page = 1;
+}
 
 try {
     $conn = getDBConnection();
-
-    $v = new DfmsValidator($_GET);
-    $page = $v->integer('page', ['nullable' => true, 'min' => 1, 'max' => 100000]) ?? 1;
-
-    // Baseline audit F-3: this list was unbounded. Pagination uses the
-    // component that already existed and had no callers.
-    $totalCows = (int) tenantScalar($conn, "SELECT COUNT(*) FROM cows WHERE {scope} AND deleted_at IS NULL");
-    $totalPages = max(1, (int) ceil($totalCows / $perPage));
-    $page = min($page, $totalPages);
-    $offset = ($page - 1) * $perPage;
-
-    $cows = tenantQuery(
-        $conn,
-        "SELECT * FROM cows WHERE {scope} AND deleted_at IS NULL ORDER BY unique_id
-         LIMIT " . (int) $perPage . " OFFSET " . (int) $offset
-    );
+    $result = animalSearch($conn, $filters, $page, 25);
+    $locations = farmLocations($conn);
+    $breeds = farmBreeds($conn);
 } catch (PDOException $e) {
-    $error_message = safeError($e, "Database error");
+    $error_message = safeError($e, 'Could not load the herd');
 }
+
+// Preserves the active filters across pagination links.
+$queryBase = array_filter([
+    'search'           => $filters['search'] ?? '',
+    'species'          => $filters['species'] ?? '',
+    'sex'              => $filters['sex'] ?? '',
+    'lifecycle_status' => $filters['lifecycle_status'] ?? '',
+    'location_id'      => $filters['location_id'] ?? '',
+    'breed'            => $filters['breed'] ?? '',
+    'include_archived' => !empty($filters['include_archived']) ? '1' : '',
+], fn($value) => $value !== '' && $value !== null);
+$paginationUrl = BASE_URL . 'modules/cows/' . ($queryBase ? '?' . http_build_query($queryBase) : '');
 
 $page_title = 'Livestock';
 $page_breadcrumb = [['label' => 'Livestock']];
 require_once '../../includes/header.php';
 ?>
 
-<div class="py-6">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="sm:flex sm:items-center">
-            <div class="sm:flex-auto">
-                <h1 class="text-2xl font-semibold text-gray-900">Cows</h1>
-                <p class="mt-2 text-sm text-gray-700">A list of all cows in the dairy farm</p>
-            </div>
-            <?php if (hasPermission('cows.create')): ?>
-                <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-                    <a href="add.php" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:w-auto">
-                        Add Cow
-                    </a>
-                </div>
-            <?php endif; ?>
-        </div>
-
-        <?php if (isset($_SESSION['error_message'])): ?>
-            <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
-                <?php 
-                echo htmlspecialchars($_SESSION['error_message']);
-                unset($_SESSION['error_message']);
-                ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if (isset($_SESSION['success_message'])): ?>
-            <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">
-                <?php 
-                echo htmlspecialchars($_SESSION['success_message']);
-                unset($_SESSION['success_message']);
-                ?>
-            </div>
-        <?php endif; ?>
-
-        <div class="mt-8 flex flex-col">
-            <div class="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
-                <div class="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-                    <div class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-                        <table class="min-w-full divide-y divide-gray-300">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Unique ID</th>
-                                    <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Date of Birth</th>
-                                    <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Age</th>
-                                    <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Notes</th>
-                                    <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Health Status</th>
-                                    <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
-                                        <span class="sr-only">Actions</span>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-200 bg-white">
-                                <?php foreach ($cows as $cow):
-                                    // Calculate age
-                                    $dob = new DateTime($cow['date_of_birth']);
-                                    $now = new DateTime();
-                                    $age = $now->diff($dob);
-
-                                    $healthStatus = $cow['health_status'];
-                                ?>
-                                    <tr>
-                                        <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
-                                            <?php echo htmlspecialchars($cow['unique_id']); ?>
-                                        </td>
-                                        <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                                            <?php echo htmlspecialchars(date('Y-m-d', strtotime($cow['date_of_birth']))); ?>
-                                        </td>
-                                        <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                                            <?php echo $age->y . ' years, ' . $age->m . ' months'; ?>
-                                        </td>
-                                        <td class="px-3 py-4 text-sm text-gray-500">
-                                            <?php echo htmlspecialchars($cow['notes']); ?>
-                                        </td>
-                                        <td class="whitespace-nowrap px-3 py-4 text-sm">
-                                            <span class="inline-flex rounded-full px-2 text-xs font-semibold leading-5 <?php echo getHealthStatusClass($healthStatus); ?>">
-                                                <?php echo htmlspecialchars(ucwords(str_replace('_', ' ', $healthStatus))); ?>
-                                            </span>
-                                        </td>
-                                        <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                                            <?php if (hasPermission('cows.edit')): ?>
-                                                <a href="edit.php?id=<?php echo $cow['cow_id']; ?>" class="text-blue-600 hover:text-blue-900 mr-4">Edit</a>
-                                            <?php endif; ?>
-                                            <a href="view.php?id=<?php echo $cow['cow_id']; ?>" class="text-green-600 hover:text-green-900 mr-4">Details</a>
-                                            <?php if (hasPermission('cows.delete')): ?>
-                                                <a href="delete.php?id=<?php echo $cow['cow_id']; ?>" class="text-red-600 hover:text-red-900" onclick="return confirm('Are you sure you want to delete this cow?')">Delete</a>
-                                            <?php endif; ?>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<?php
-// Maps the cows.health_status enum to its badge styling.
-function getHealthStatusClass($status) {
-    switch ($status) {
-        case 'healthy':
-            return 'bg-green-100 text-green-800';
-        case 'sick':
-            return 'bg-red-100 text-red-800';
-        case 'at_risk':
-            return 'bg-yellow-100 text-yellow-800';
-        case 'treatment':
-            return 'bg-blue-100 text-blue-800';
-        default:
-            return 'bg-gray-100 text-gray-800';
+<style>
+    .animal-filters {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 1rem; align-items: end;
     }
-}
-?> 
+    .animal-filters .dfms-field { margin-bottom: 0; }
+    .animal-row-name { font-weight: 600; }
+    .animal-row-sub { font-size: .82rem; color: var(--text-muted, #59685f); }
+</style>
+
+<?php dfms_page_header(
+    'Livestock',
+    $result['total'] . ' animal' . ($result['total'] === 1 ? '' : 's') . ' on this farm.',
+    hasPermission('cows.create')
+        ? dfms_button_html('Add animal', BASE_URL . 'modules/cows/add.php', 'primary', ['icon' => 'plus'])
+        : ''
+); ?>
+
+<?php if ($error_message): ?><?php dfms_alert($error_message, 'error'); ?><?php endif; ?>
+
+<!-- ===================== Filters ===================== -->
+<section class="dfms-section">
+    <div class="dfms-card">
+        <form method="GET" action="" role="search">
+            <div class="animal-filters">
+                <div class="dfms-field">
+                    <label for="search">Search</label>
+                    <input id="search" name="search" type="search" autocomplete="off" spellcheck="false" maxlength="100"
+                           value="<?php echo e($filters['search'] ?? ''); ?>"
+                           placeholder="Tag, name, breed or identifier…"
+                           aria-describedby="search-help">
+                    <small id="search-help" class="dfms-text-muted">Includes RFID and registration numbers.</small>
+                </div>
+
+                <div class="dfms-field">
+                    <label for="species">Species</label>
+                    <select id="species" name="species">
+                        <option value="">All</option>
+                        <?php foreach (DFMS_SPECIES as $key => $meta): ?>
+                            <option value="<?php echo e($key); ?>" <?php echo ($filters['species'] ?? '') === $key ? 'selected' : ''; ?>>
+                                <?php echo e($meta['label']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="dfms-field">
+                    <label for="sex">Sex</label>
+                    <select id="sex" name="sex">
+                        <option value="">All</option>
+                        <option value="female" <?php echo ($filters['sex'] ?? '') === 'female' ? 'selected' : ''; ?>>Female</option>
+                        <option value="male" <?php echo ($filters['sex'] ?? '') === 'male' ? 'selected' : ''; ?>>Male</option>
+                    </select>
+                </div>
+
+                <div class="dfms-field">
+                    <label for="lifecycle_status">Status</label>
+                    <select id="lifecycle_status" name="lifecycle_status">
+                        <option value="">All</option>
+                        <?php foreach (DFMS_LIFECYCLE_STATUSES as $key => $meta): ?>
+                            <option value="<?php echo e($key); ?>" <?php echo ($filters['lifecycle_status'] ?? '') === $key ? 'selected' : ''; ?>>
+                                <?php echo e($meta['label']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <?php if ($breeds): ?>
+                    <div class="dfms-field">
+                        <label for="breed">Breed</label>
+                        <select id="breed" name="breed">
+                            <option value="">All</option>
+                            <?php foreach ($breeds as $breed): ?>
+                                <option value="<?php echo e($breed); ?>" <?php echo ($filters['breed'] ?? '') === $breed ? 'selected' : ''; ?>>
+                                    <?php echo e($breed); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                <?php endif; ?>
+
+                <?php if ($locations): ?>
+                    <div class="dfms-field">
+                        <label for="location_id">Location</label>
+                        <select id="location_id" name="location_id">
+                            <option value="">All</option>
+                            <?php foreach ($locations as $location): ?>
+                                <option value="<?php echo (int) $location['location_id']; ?>"
+                                    <?php echo (int) ($filters['location_id'] ?? 0) === (int) $location['location_id'] ? 'selected' : ''; ?>>
+                                    <?php echo e($location['name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                <?php endif; ?>
+
+                <div class="dfms-field">
+                    <label for="include_archived" style="display:flex;align-items:center;gap:.45rem;">
+                        <input id="include_archived" name="include_archived" type="checkbox" value="1"
+                               <?php echo !empty($filters['include_archived']) ? 'checked' : ''; ?>>
+                        Include archived
+                    </label>
+                </div>
+
+                <div class="dfms-field" style="display:flex;gap:.5rem;">
+                    <button type="submit" class="dfms-btn dfms-btn-primary">Apply</button>
+                    <a href="<?php echo BASE_URL; ?>modules/cows/" class="dfms-btn dfms-btn-secondary">Reset</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</section>
+
+<!-- ===================== Results ===================== -->
+<section class="dfms-section">
+    <div class="dfms-card">
+        <?php if (empty($result['items'])): ?>
+            <?php dfms_empty_state(
+                ($filters['search'] ?? '') !== '' ? 'No animals match that search' : 'No animals yet',
+                ($filters['search'] ?? '') !== ''
+                    ? 'Try a different tag, name, breed or identifier.'
+                    : 'Add the first animal to start building the herd record.',
+                hasPermission('cows.create')
+                    ? dfms_button_html('Add animal', BASE_URL . 'modules/cows/add.php', 'primary')
+                    : ''
+            ); ?>
+        <?php else: ?>
+            <?php dfms_table_open([
+                ['label' => 'Tag'],
+                ['label' => 'Animal'],
+                ['label' => 'Species / breed'],
+                ['label' => 'Age'],
+                ['label' => 'Location'],
+                ['label' => 'Status'],
+                ['label' => '', 'align' => 'right'],
+            ]); ?>
+            <?php foreach ($result['items'] as $animal): ?>
+                <tr>
+                    <?php
+                    $profileUrl = BASE_URL . 'modules/cows/view.php?id=' . (int) $animal['cow_id'];
+                    dfms_cell('Tag', '<a href="' . e($profileUrl) . '"><code>' . e($animal['unique_id']) . '</code></a>');
+                    dfms_cell('Animal',
+                        '<span class="animal-row-name">' . e($animal['name'] ?: '—') . '</span><br>'
+                        . '<span class="animal-row-sub">' . e(dfms_animal_sex_label($animal['species'], $animal['sex'])) . '</span>'
+                    );
+                    dfms_cell('Species / breed',
+                        e(dfms_species_label($animal['species']))
+                        . '<br><span class="animal-row-sub">' . e($animal['breed'] ?: '—') . '</span>'
+                    );
+                    dfms_cell('Age', e(animalAgeLabel($animal['date_of_birth'])));
+                    dfms_cell('Location', e($animal['location_name'] ?? 'Unassigned'));
+                    dfms_cell('Status', dfms_status_badge_html($animal['lifecycle_status']));
+                    ?>
+                    <td class="dfms-cell-actions">
+                        <a href="<?php echo e($profileUrl); ?>" class="dfms-btn dfms-btn-secondary dfms-btn-sm">Profile</a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            <?php dfms_table_close(); ?>
+
+            <?php dfms_pagination($result['page'], $result['pages'], $paginationUrl, $result['total']); ?>
+        <?php endif; ?>
+    </div>
+</section>
+
 <?php require_once '../../includes/footer.php'; ?>

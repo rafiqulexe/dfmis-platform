@@ -131,8 +131,21 @@ jobs:
           php database/seed_demo_data.php
 
       - name: Create the isolated test database
-        # PHPUnit runs against dfms_test, never the schema the HTTP suites use.
+        # PHPUnit and the Phase 3 animal suite both run against dfms_test,
+        # never the schema the other HTTP suites use. --create also seeds it,
+        # which is what makes an isolated HTTP run possible.
         run: php tools/test-db.php --create
+
+      - name: Verify the test database is isolated
+        # Guards against the isolation silently regressing: the two schemas must
+        # be distinct, and the guard must refuse the development database.
+        run: |
+          php -r '
+            require "tests/bootstrap.php";
+            [$safe, $reason] = dfms_test_database_is_safe();
+            if (!$safe) { fwrite(STDERR, "Test DB not approved: $reason\n"); exit(1); }
+            echo "Test database approved: $reason\n";
+          '
 
       # ---- unit tests: still no server needed ------------------------------
 
@@ -155,15 +168,42 @@ jobs:
           cat /tmp/dfms-server.log >&2
           exit 1
 
+      - name: Start the isolated test server
+        # Phase 3's animal suite mutates a lot of data, so it runs against
+        # dfms_test on its own port. Started explicitly here for the same reason
+        # as the server above: a suite that cannot run must FAIL, not skip.
+        run: |
+          DB_NAME=dfms_test php -S localhost:8100 -t . > /tmp/dfms-test-server.log 2>&1 &
+          echo $! > /tmp/dfms-test-server.pid
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://localhost:8100/index.php; then
+              echo "Isolated test server is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "Isolated test server failed to start:" >&2
+          cat /tmp/dfms-test-server.log >&2
+          exit 1
+
       - name: Full test suite
-        # run_all.sh runs lint, both unit suites and all four HTTP suites, and
-        # exits non-zero if the server is unreachable rather than skipping.
+        env:
+          # run_all.sh reuses the isolated server started above rather than
+          # spawning a second one.
+          DFMS_ANIMAL_PORT: "8100"
+        # Runs lint, all three unit suites and all five HTTP suites, and exits
+        # non-zero if a required server is unreachable rather than skipping.
         run: bash tests/run_all.sh
 
-      - name: Server log on failure
+      - name: Server logs on failure
         if: failure()
-        run: cat /tmp/dfms-server.log || true
+        run: |
+          echo "--- application server ---"
+          cat /tmp/dfms-server.log || true
+          echo "--- isolated test server ---"
+          cat /tmp/dfms-test-server.log || true
 
-      - name: Stop the application server
+      - name: Stop the servers
         if: always()
-        run: kill "$(cat /tmp/dfms-server.pid)" 2>/dev/null || true
+        run: |
+          kill "$(cat /tmp/dfms-server.pid)" 2>/dev/null || true
+          kill "$(cat /tmp/dfms-test-server.pid)" 2>/dev/null || true

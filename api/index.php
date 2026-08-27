@@ -108,13 +108,39 @@ $routes = [
         'auth'       => true,
         'permission' => 'settings.view',
     ],
+    '/v1/animals' => [
+        'methods'    => ['GET'],
+        'handler'    => __DIR__ . '/v1/animals.php',
+        'auth'       => true,
+        'permission' => 'cows.view',
+        // Also serves /v1/animals/{id}. See the resolution below: the trailing
+        // segment is a single id passed to the handler, NOT a wildcard that
+        // could match a deeper path.
+        'accepts_id' => true,
+    ],
 ];
 
-if (!isset($routes[$route])) {
-    http_error('NOT_FOUND', 'No such endpoint.', 404);
+// Route resolution: exact match first.
+$definition = $routes[$route] ?? null;
+$GLOBALS['dfms_route_param'] = null;
+
+// Then, for routes that opted in, a single trailing id segment. This is
+// deliberately not a pattern router: the parent path must still be an exact
+// entry in the table above, and only ONE extra segment is ever accepted, so
+// a deeper path cannot be smuggled through.
+if ($definition === null && preg_match('#^(/v\d+/[a-z0-9_\-]+)/([^/]+)$#', $route, $matches)) {
+    $candidate = $routes[$matches[1]] ?? null;
+    if ($candidate !== null && !empty($candidate['accepts_id'])) {
+        $definition = $candidate;
+        // Passed as-is and validated by the handler with DfmsValidator, so a
+        // non-numeric segment becomes a 404 rather than reaching a query.
+        $GLOBALS['dfms_route_param'] = $matches[2];
+    }
 }
 
-$definition = $routes[$route];
+if ($definition === null) {
+    http_error('NOT_FOUND', 'No such endpoint.', 404);
+}
 
 // 1. Method — before authentication, so an unsupported method on a public
 //    endpoint does not depend on session state.

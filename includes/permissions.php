@@ -70,6 +70,24 @@ const DFMS_PERMISSIONS = [
     // are in force; misreading those is a real operational hazard. Changing
     // them is a farm manager decision, because a unit or timezone change
     // alters how every existing record is presented to everyone.
+    // Phase 3 — Animal Digital Twin.
+    //
+    // Only TWO new permissions. Viewing, creating, editing and archiving an
+    // animal are already covered by cows.view/create/edit/delete, and files by
+    // files.view/upload/delete — creating animal.* duplicates of those would be
+    // permission bloat with two places to get the matrix wrong.
+    //
+    // These two exist because they are genuinely different decisions:
+    //   lifecycle — declaring an animal sold, dead or retired is a herd
+    //               management call, and a vet is the right person to record a
+    //               death. It also covers ownership, which is the same kind of
+    //               "what is this animal's standing" judgement.
+    //   transfer  — moves an animal's farm_id, its TENANT KEY. Restricted to
+    //               farm managers, who are the only role that can be trusted
+    //               with a cross-farm data movement.
+    'animal.lifecycle' => ['farm_manager', 'veterinarian'],
+    'animal.transfer'  => ['farm_manager'],
+
     'settings.view'    => ['farm_manager', 'veterinarian', 'staff', 'accountant', 'viewer'],
     'settings.farm'    => ['farm_manager'],
     // Feature rollout at FARM scope. Organization scope is governed by

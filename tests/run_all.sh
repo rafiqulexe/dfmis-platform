@@ -13,6 +13,7 @@
 #   6. integration    — security regression            (needs the dev server)
 #   7. integration    — international settings         (needs the dev server)
 #   8. integration    — API foundation                 (needs the dev server)
+#   9. integration    — Animal Digital Twin (ISOLATED dfms_test server)
 #
 # The integration suites FAIL rather than skip when no server is running, so a
 # green result can never mean "half of this did not run".
@@ -57,7 +58,7 @@ record() { # record <suite name> <exit code>
 }
 
 # ---- 1. syntax ------------------------------------------------------------
-banner "1/8  Syntax check (php -l)"
+banner "1/9  Syntax check (php -l)"
 LINT_FAIL=0
 LINT_OK=0
 while IFS= read -r file; do
@@ -73,14 +74,14 @@ echo "  clean: $LINT_OK   failing: $LINT_FAIL"
 record "syntax check" "$LINT_FAIL"
 
 # ---- 2. unit --------------------------------------------------------------
-banner "2/8  Unit tests — validation layer"
+banner "2/9  Unit tests — validation layer"
 "$PHP" "$ROOT/tests/validation_unit_test.php"
 record "validation unit tests" "$?"
 
 # ---- 3. unit: PHPUnit (Phase 2B) -----------------------------------------
 # Runs against the ISOLATED test database (dfms_test), never the development
 # one. tests/bootstrap.php refuses to proceed otherwise.
-banner "3/8  Unit tests — PHPUnit"
+banner "3/9  Unit tests — PHPUnit"
 if [ -f "$ROOT/vendor/bin/phpunit" ]; then
     "$PHP" "$ROOT/vendor/bin/phpunit" --colors=never
     record "phpunit" "$?"
@@ -92,7 +93,7 @@ fi
 # ---- 4. unit: international foundation (Phase 2) --------------------------
 # Needs the database (it exercises the settings hierarchy against real rows)
 # but not the web server, so it runs before the server check.
-banner "4/8  Unit tests — international platform foundation"
+banner "4/9  Unit tests — international platform foundation"
 "$PHP" "$ROOT/tests/international_unit_test.php"
 record "international unit tests" "$?"
 
@@ -111,24 +112,66 @@ if ! curl -s -o /dev/null --max-time 5 "$BASE/index.php" 2>/dev/null; then
 fi
 
 # ---- 3. tenant isolation --------------------------------------------------
-banner "5/8  Integration — tenant isolation + RBAC"
+banner "5/9  Integration — tenant isolation + RBAC"
 bash "$ROOT/tests/tenant_isolation_test.sh"
 record "tenant isolation" "$?"
 
 # ---- 4. security regression ----------------------------------------------
-banner "6/8  Integration — security regression"
+banner "6/9  Integration — security regression"
 bash "$ROOT/tests/security_regression_test.sh"
 record "security regression" "$?"
 
 # ---- 6. international isolation (Phase 2) --------------------------------
-banner "7/8  Integration — international settings isolation"
+banner "7/9  Integration — international settings isolation"
 bash "$ROOT/tests/international_isolation_test.sh"
 record "international isolation" "$?"
 
 # ---- 8. API integration (Phase 2B) ---------------------------------------
-banner "8/8  Integration — API foundation"
+banner "8/9  Integration — API foundation"
 bash "$ROOT/tests/api_test.sh"
 record "api foundation" "$?"
+
+# ---- 9. Animal Digital Twin (Phase 3) ------------------------------------
+#
+# This suite runs against the ISOLATED test database, not the development one.
+# A dedicated server is started here pointing at dfms_test, so the many
+# data-mutating Phase 3 assertions cannot touch development data.
+#
+# If the test database or its server cannot be brought up, the suite FAILS.
+# It does not fall back to the development database silently — that would be
+# the exact hazard this isolation exists to remove.
+banner "9/9  Integration — Animal Digital Twin (isolated database)"
+
+ANIMAL_PORT="${DFMS_ANIMAL_PORT:-8100}"
+ANIMAL_URL="http://localhost:${ANIMAL_PORT}"
+ANIMAL_SERVER_PID=""
+
+if curl -s -o /dev/null --max-time 3 "$ANIMAL_URL/index.php" 2>/dev/null; then
+    echo "  Reusing the test server already running on :$ANIMAL_PORT"
+else
+    echo "  Starting an isolated test server on :$ANIMAL_PORT (DB_NAME=dfms_test)"
+    DB_NAME=dfms_test "$PHP" -S "localhost:$ANIMAL_PORT" -t "$ROOT" > /tmp/dfms-animal-server.log 2>&1 &
+    ANIMAL_SERVER_PID=$!
+
+    for _ in $(seq 1 30); do
+        curl -s -o /dev/null "$ANIMAL_URL/index.php" 2>/dev/null && break
+        sleep 0.5
+    done
+fi
+
+if ! curl -s -o /dev/null --max-time 3 "$ANIMAL_URL/index.php" 2>/dev/null; then
+    echo "  ERROR: the isolated test server did not start."
+    echo "  Create the test database first:  $PHP tools/test-db.php --create"
+    cat /tmp/dfms-animal-server.log 2>/dev/null || true
+    record "animal digital twin" 1
+else
+    DFMS_ANIMAL_BASE_URL="$ANIMAL_URL" bash "$ROOT/tests/animal_isolation_test.sh"
+    record "animal digital twin" "$?"
+fi
+
+if [ -n "$ANIMAL_SERVER_PID" ]; then
+    kill "$ANIMAL_SERVER_PID" 2>/dev/null || true
+fi
 
 # ---- summary --------------------------------------------------------------
 echo ""

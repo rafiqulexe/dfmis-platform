@@ -233,6 +233,61 @@ without manual SQL.
 
 ---
 
+## Phase 3 · Livestock Core — **COMPLETE**
+
+Commit `feat: establish livestock core and animal digital twin`. Migration 007.
+9 suites, 730 assertions, PHPStan level 5 with an empty baseline.
+
+**Delivered** — see [`DFMIS_ANIMAL_DIGITAL_TWIN.md`](./DFMIS_ANIMAL_DIGITAL_TWIN.md)
+
+- `cows` **evolved** into the animal master record — not replaced. Renaming it
+  would have broken 12 files and 2 foreign keys for no gain.
+- Classification: species registry (cattle, buffalo, goat, sheep) with
+  species-correct vocabulary; breed stays free text with suggestions.
+- `animal_identifiers` — typed identifiers (RFID, registry, microchip, national
+  ID), unique **per farm**, deliberately not globally, to avoid reintroducing the
+  T-1 cross-tenant enumeration leak.
+- `animal_lifecycle_events` — a real state machine with append-only history;
+  terminal states return to `active` only, so corrections are visible rather than
+  erasing the past. Kept in step with the existing `deleted_at` flag, so no
+  pre-existing list page changed.
+- `animal_transfers` — internal movement and inter-farm transfer, the latter
+  guarded by live membership **and** same-organization checks, in one transaction.
+- `animal_ownership` — owned / leased / managed / boarding, with periods.
+- Parentage — internal or external parents, with self-parent, sex-mismatch and
+  pedigree-cycle prevention. An external sire is never created as a fake animal.
+- Documents and photos **reusing the Phase 1 storage layer**; no second file
+  system.
+- Animal timeline — a union over existing tables, not a duplicate event store.
+- Search, filters, pagination; read-only `/api/v1/animals` reusing the same
+  domain functions as the UI.
+- Tabbed animal profile (server-rendered, no frontend framework), reviewed
+  against the Web Interface Guidelines for accessibility.
+- **Test isolation improved** (the Phase 2B deferred item): `tools/test-db.php`
+  now seeds `dfms_test`, and the Phase 3 HTTP suite runs against its own server
+  on that database. It fails rather than silently falling back.
+
+**Two omissions caught by tests during development:** the new tables were missing
+from `DFMS_TENANT_TABLES` (the repository correctly refused them), and migrations
+`002`–`004` embed `USE dfms;` which would have redirected a test-database run at
+the development schema.
+
+**Deliberately NOT delivered** (deferred with reasons in the document §22):
+
+- **Per-animal milk yield** — production is still a farm-level daily total. This
+  is the largest remaining data-model gap and belongs to Phase 8.
+- **Reproduction / breeding module** — Phase 8.
+- **Genetics beyond a registry id and free-text notes** — no genomic analysis.
+- **CSV bulk import** — export groundwork exists; destructive import was out of
+  scope.
+- **Weight and body-condition history.**
+- **Test isolation for the four pre-Phase-3 HTTP suites** — still on the
+  development database.
+- **No AI, vision, ML or IoT of any kind.**
+
+<details>
+<summary>Original Phase 3 plan</summary>
+
 ## Phase 3 · Livestock Core
 
 Deepen the first vertical to production standard.
@@ -248,6 +303,8 @@ Deepen the first vertical to production standard.
 - Animal timeline aggregating every module's events into one chronology
 
 **Exit criteria** — an animal's complete life history is reconstructable from the UI.
+
+</details>
 
 ---
 
@@ -502,27 +559,31 @@ becomes. Consider pulling the schema change forward into Phase 3.
 | 0 · Baseline | complete | `50277c8` |
 | 1 · Foundation Hardening | complete | `ae249b9` |
 | 2A · International foundation | complete | `78b25ac` |
-| 2B · Platform Engineering Foundation | complete | `chore: establish platform engineering foundation` |
+| 2B · Platform Engineering Foundation | complete | `cfac2ce` |
 | 2C · Platform surfaces | **not started** | — |
-| 3+ | not started | — |
+| 3 · Livestock Core & Animal Digital Twin | complete | `feat: establish livestock core and animal digital twin` |
+| 4+ | not started | — |
 
-Test suite: **575 assertions across 8 suites, all passing** (`bash tests/run_all.sh`).
+Test suite: **730 assertions across 9 suites, all passing** (`bash tests/run_all.sh`).
 Static analysis: **PHPStan level 5, zero findings, empty baseline**.
-Schema at migration **006**.
+Schema at migration **007**.
 
-**Phase 3 is now unblocked.** The engineering gate that had been deferred twice —
-a real test framework, static analysis and a CI pipeline — is in place, and the
-API foundation later phases attach to exists and is tested for tenant isolation.
+**Phase 4 (Health & Veterinary) is unblocked.** The animal record it needs now
+exists, with stable identity, lifecycle and a timeline to attach events to.
 
-Before Phase 3 begins, two items are worth weighing:
+Three items are worth weighing before Phase 4:
 
-1. **Test isolation for suites 4–8.** They still run against the development
-   database. Phase 3 adds substantially more data-mutating tests, so the cost of
-   deferring this rises with every phase.
-2. **Organization member management** (Phase 2C). Organization roles can only be
-   set by seeding, which makes onboarding a second real customer manual.
+1. **Per-animal production data does not exist.** `milk_production` is still a
+   farm-level daily total with no animal reference. Phase 4's withdrawal-period
+   enforcement needs to link a treatment to the milk it affects, which is hard
+   without it. Pulling this part of Phase 8 forward is worth considering.
+2. **Test isolation for the four pre-Phase-3 HTTP suites.** Phase 3's own suite is
+   isolated on `dfms_test`; the older ones still use the development database.
+   Each phase adds more mutating tests, so this keeps getting more expensive.
+3. **Organization member management** (Phase 2C). Organization roles can still
+   only be set by seeding, which makes onboarding a second real customer manual.
 
-Neither blocks Phase 3, but both get more expensive the longer they wait.
+None blocks Phase 4.
 
 ### Sequencing note carried forward
 

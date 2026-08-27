@@ -26,6 +26,13 @@ const DFMS_TENANT_TABLES = [
     'cows', 'health_events', 'feeding_schedules', 'feed_consumption',
     'milk_production', 'inventory_items', 'inventory_levels',
     'temperature_readings', 'alerts', 'audit_log', 'locations',
+    // Phase 2B — uploaded files carry a farm_id and are read back through a
+    // tenant-scoped handler.
+    'stored_files',
+    // Phase 3 — Animal Digital Twin satellites. Each carries farm_id and must
+    // be reachable through the repository helpers; an unregistered table is
+    // refused by tenantFind()/tenantInsert() by design.
+    'animal_identifiers', 'animal_lifecycle_events', 'animal_transfers', 'animal_ownership',
 ];
 
 // Identifiers we will interpolate into SQL must be provably safe, because no
