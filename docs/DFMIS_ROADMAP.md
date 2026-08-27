@@ -308,7 +308,80 @@ Deepen the first vertical to production standard.
 
 ---
 
-## Phase 4 · Health & Veterinary
+## Phase 4 · Health & Veterinary — **COMPLETE**
+
+Commit `feat: implement veterinary health foundation`. Migration 008.
+10 suites, 1159 assertions, PHPStan level 5 with an empty baseline.
+
+**Delivered** — see [`DFMIS_VETERINARY_HEALTH_ARCHITECTURE.md`](./DFMIS_VETERINARY_HEALTH_ARCHITECTURE.md)
+
+- Twelve normalised clinical tables: health cases, status history, observations,
+  symptoms, diagnoses, veterinary consultations, treatments, medication
+  administrations, vaccinations, quarantine, withdrawal periods and laboratory
+  tests. All tenant-owned, all registered in `DFMS_TENANT_TABLES`.
+- `health_events` **preserved** as the free-form event log, gaining one nullable
+  `case_id`. Its four existing rows keep `case_id = NULL` — no case existed when
+  they were written, and inventing one would be fiction.
+- `cows.health_status` **widened** by `quarantined` and `recovered`. The four
+  original values keep their stored form and meaning; only labels were clarified.
+  `deceased` was deliberately NOT added — lifecycle owns death, and two columns
+  that can disagree about whether an animal is alive is the drift Phase 3 avoided.
+- **Lifecycle is authoritative over health.** A terminal lifecycle state refuses
+  every clinical write; the correction path is the Phase 3 lifecycle page.
+- Structured observations that integrate with the Phase 2 units architecture:
+  entered in the farm's system, **stored canonically**, range-checked on the
+  canonical value. An unsupported unit **fails** rather than converting wrongly.
+- Coded symptom and condition registries with a single `other` escape hatch, so
+  patterns are analysable without rejecting an unrecognised sign.
+- Diagnoses carry explicit epistemic status (`suspected` / `confirmed` /
+  `ruled_out` / `resolved`) and the **clinician's own stated confidence**, never
+  a computed one. A diagnosis is never rewritten, only re-statused.
+- External veterinarians need **no DFMIS account** — the practitioner is
+  descriptive text, so authentication assumptions are untouched.
+- Medication administration consumes inventory through the existing `FOR UPDATE`
+  pattern inside one transaction; stock never goes negative and a refusal leaves
+  no medication row, no withdrawal and no stock change.
+- Vaccination schedule and record in one table. **A scheduled dose is never
+  promoted to administered by the passage of time** — only an explicit human
+  action does that. Corrections supersede rather than edit.
+- Withdrawal periods per animal, per restriction type, with an **inclusive** end
+  date, species-filtered types, and **no zero-day default** — a blank withdrawal
+  creates no restriction at all.
+- Quarantine reusing the Phase 3 `locations` model and `animalMoveWithinFarm()`.
+- Laboratory tests with PDF report attachment through the Phase 1 file system.
+  PDF is the one non-image type added, magic-byte checked and always served as an
+  attachment, never inline.
+- Health events extend the Phase 3 timeline as a **union over source tables** —
+  no duplicate event store.
+- Five deduplicating, auto-resolving health alert types on the existing `alerts`
+  table. Phase 1 left no generator to reuse, so the smallest honest one was built.
+- Two new permissions only: `health.observe` (wider — routine stockmanship) and
+  `health.medicate` (narrowest — consumes stock, creates a food-safety restriction).
+- Read-only API: `/v1/animal-health/{id}` and `/v1/health-cases[/{id}]`.
+  `/v1/health` remains the public liveness probe, untouched.
+
+**Not delivered, deliberately — withdrawal is ADVISORY, not enforced.**
+`milk_production` remains a farm-level daily total with no `cow_id`, so DFMIS
+tracks and surfaces an individual animal's restriction but **cannot verify** that
+its milk was excluded from the tank. This is stated on the withdrawals page, in
+the API payload (`withdrawal_enforcement: "advisory_only"`) and in the
+architecture document. Real enforcement needs per-animal production traceability
+and is carried to Phase 8. Building a fake gate now would create confidence the
+data cannot support.
+
+**Also deferred:** batch-level inventory stock (inventory holds one quantity per
+item, so batch/lot is captured on the administration instead), scheduled alert
+generation, and international disease-code alignment.
+
+**Exit criteria** — a veterinarian can run a full treatment cycle in the system:
+open a case, record symptoms and a diagnosis, start a treatment, administer
+medication with batch and withdrawal, isolate the animal, record laboratory work,
+and resolve the case with an outcome. Withdrawal periods are tracked and
+surfaced per animal; enforcement against production records is **explicitly
+carried to Phase 8** rather than claimed here.
+
+<details>
+<summary>Original Phase 4 plan</summary>
 
 Health is currently create-and-list only.
 
@@ -322,11 +395,15 @@ Health is currently create-and-list only.
 - Mortality and post-mortem records
 - Health cost tracking per animal, feeding Phase 9
 
-**Exit criteria** — a veterinarian can run a full treatment cycle in the system;
-withdrawal periods are enforced against production records.
+*Delivered as above, with three deviations recorded honestly: withdrawal
+enforcement against production is not possible without per-animal milk data;
+the condition taxonomy is a stable pragmatic registry rather than an
+international standard; and a full practitioner registry was not built because
+requiring an account per external vet would make the record unusable.*
+
+</details>
 
 ---
-
 ## Phase 5 · AI Intelligence Engine
 
 Activate `ai_service.php`, which is complete and currently unreachable.
@@ -562,28 +639,35 @@ becomes. Consider pulling the schema change forward into Phase 3.
 | 2B · Platform Engineering Foundation | complete | `cfac2ce` |
 | 2C · Platform surfaces | **not started** | — |
 | 3 · Livestock Core & Animal Digital Twin | complete | `feat: establish livestock core and animal digital twin` |
-| 4+ | not started | — |
+| 4 · Health & Veterinary | complete | `feat: implement veterinary health foundation` |
+| 5+ | not started | — |
 
-Test suite: **730 assertions across 9 suites, all passing** (`bash tests/run_all.sh`).
+Test suite: **1159 assertions across 10 suites, all passing** (`bash tests/run_all.sh`).
 Static analysis: **PHPStan level 5, zero findings, empty baseline**.
-Schema at migration **007**.
+Schema at migration **008**.
 
-**Phase 4 (Health & Veterinary) is unblocked.** The animal record it needs now
-exists, with stable identity, lifecycle and a timeline to attach events to.
+**Phase 5 (AI Intelligence Engine) is unblocked.** The structured, coded and
+provenance-complete clinical record it needs now exists, and it represents
+uncertainty explicitly — `suspected` / `ruled_out`, `outcome: unknown`, absent
+confidence stored as NULL — so a model reads what was actually known rather than
+a flattened certainty.
 
-Three items are worth weighing before Phase 4:
+Three items are worth weighing before Phase 5:
 
-1. **Per-animal production data does not exist.** `milk_production` is still a
-   farm-level daily total with no animal reference. Phase 4's withdrawal-period
-   enforcement needs to link a treatment to the milk it affects, which is hard
-   without it. Pulling this part of Phase 8 forward is worth considering.
-2. **Test isolation for the four pre-Phase-3 HTTP suites.** Phase 3's own suite is
-   isolated on `dfms_test`; the older ones still use the development database.
-   Each phase adds more mutating tests, so this keeps getting more expensive.
+1. **Per-animal production data still does not exist**, and Phase 4 has now hit
+   it directly. `milk_production` remains a farm-level daily total with no animal
+   reference, so medicine withdrawal is tracked and surfaced but **cannot be
+   enforced** against production. This is the single most valuable thing to pull
+   forward from Phase 8: it converts a food-safety advisory into a food-safety
+   control.
+2. **Test isolation for the four pre-Phase-3 HTTP suites.** Phases 3 and 4 both
+   run isolated on `dfms_test`; the four older suites still use the development
+   database. Each phase adds more mutating tests, so this keeps getting more
+   expensive to defer.
 3. **Organization member management** (Phase 2C). Organization roles can still
    only be set by seeding, which makes onboarding a second real customer manual.
 
-None blocks Phase 4.
+None blocks Phase 5.
 
 ### Sequencing note carried forward
 

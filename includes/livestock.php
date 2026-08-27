@@ -242,6 +242,13 @@ const DFMS_DOCUMENT_TYPES = [
     'health'        => 'Health document',
     'pedigree'      => 'Pedigree document',
     'insurance'     => 'Insurance document',
+    // Phase 4 — veterinary documents. Three new KEYS on the existing column,
+    // not a new table and not a new storage path: a laboratory report is still
+    // an ordinary stored_files row, reachable only through the access-
+    // controlled handler in modules/files/serve.php.
+    'lab_report'    => 'Laboratory report',
+    'prescription'  => 'Prescription',
+    'vet_report'    => 'Veterinary report',
     'other'         => 'Other',
 ];
 
@@ -985,10 +992,30 @@ function animalTimeline(PDO $conn, int $animalId, int $page = 1, int $perPage = 
         ];
     }
 
+    // Phase 4 — the veterinary record.
+    //
+    // Loaded HERE rather than at the top of this file because health.php
+    // requires livestock.php in turn; a lazy require_once inside the one
+    // function that needs it keeps the dependency one-directional at load time
+    // while still guaranteeing the timeline is complete wherever it is shown.
+    //
+    // healthTimelineEvents() returns entries in this same shape, produced by
+    // querying the real clinical tables. The Phase 3 principle is unchanged:
+    // the timeline is a UNION OVER SOURCE RECORDS, never a duplicate event
+    // store, so nothing here can drift from the record it describes.
+    require_once __DIR__ . '/health.php';
+    foreach (healthTimelineEvents($conn, $animalId) as $healthEvent) {
+        $events[] = $healthEvent;
+    }
+
     // NOTE: milk production is deliberately absent. milk_production records a
     // FARM-level daily total and carries no cow_id, so there is no per-animal
     // production event to show. Per-animal yield is Phase 8; claiming it here
     // would mean attributing the whole herd's output to every animal.
+    //
+    // Phase 4 note: this is the SAME limitation that stops withdrawal periods
+    // from being enforced against production rather than merely surfaced. See
+    // docs/DFMIS_VETERINARY_HEALTH_ARCHITECTURE.md.
 
     usort($events, function ($a, $b) {
         return strcmp((string) $b['occurred_at'], (string) $a['occurred_at']);
@@ -1113,6 +1140,12 @@ function animalProfile(PDO $conn, int $animalId): array {
         $location = tenantFind($conn, 'locations', 'location_id', (int) $animal['location_id']);
     }
 
+    // Phase 4 — the clinical picture, from the one function the health module
+    // and the API also use, so the three surfaces cannot disagree about
+    // whether this animal is under treatment or under restriction.
+    // Lazily required for the same reason as in animalTimeline().
+    require_once __DIR__ . '/health.php';
+
     return [
         'animal'       => $animal,
         'identifiers'  => animalIdentifiers($conn, $animalId),
@@ -1120,9 +1153,11 @@ function animalProfile(PDO $conn, int $animalId): array {
         'offspring'    => animalOffspring($conn, $animalId),
         'location'     => $location,
         'ownership'    => animalCurrentOwnership($conn, $animalId),
+        // The legacy free-form event log, unchanged and still shown.
         'recentHealth' => $recentHealth,
         'photos'       => animalPhotos($conn, $animalId),
         'documents'    => animalDocuments($conn, $animalId),
         'lifecycle'    => animalLifecycleHistory($conn, $animalId),
+        'health'       => healthAnimalSummary($conn, $animalId),
     ];
 }

@@ -40,6 +40,34 @@ const DFMS_PERMISSIONS = [
     'health.view'      => ['farm_manager', 'veterinarian', 'staff', 'viewer'],
     'health.create'    => ['farm_manager', 'veterinarian'],
 
+    // Phase 4 — Veterinary & Animal Health.
+    //
+    // Only TWO new permissions, because most health actions are already the
+    // same decision as an existing one:
+    //
+    //   reading anything clinical      -> health.view (unchanged)
+    //   opening a case, recording a
+    //   diagnosis, a treatment, a
+    //   consultation, a lab test or a
+    //   quarantine                     -> health.create (unchanged)
+    //
+    // Creating health.manage as a separate permission would have produced a
+    // role list identical to health.create's — two names for one decision, and
+    // two places to get the matrix wrong.
+    //
+    // These two exist because they ARE genuinely different decisions:
+    //   observe   Taking a temperature or noting that an animal is off its feed
+    //             is routine stockmanship, not a clinical judgement. Staff do
+    //             it every day and locking them out means it goes unrecorded —
+    //             which is worse than recording it. Deliberately WIDER than
+    //             health.create.
+    //   medicate  Administering a medicine consumes controlled stock and
+    //             creates a food-safety withdrawal restriction. It is the
+    //             narrowest health action in the system and is NOT granted to
+    //             staff, accountants or viewers.
+    'health.observe'   => ['farm_manager', 'veterinarian', 'staff'],
+    'health.medicate'  => ['farm_manager', 'veterinarian'],
+
     'feeding.view'     => ['farm_manager', 'veterinarian', 'staff', 'viewer'],
     'feeding.create'   => ['farm_manager', 'staff'],
 

@@ -118,6 +118,34 @@ $routes = [
         // could match a deeper path.
         'accepts_id' => true,
     ],
+
+    // ---- Phase 4: Veterinary & Animal Health -------------------------------
+    //
+    // NOTE THE NAMES. /v1/health is ALREADY the public, unauthenticated
+    // liveness probe above. These are deliberately separate routes rather than
+    // an overload of it — reusing that path would either expose clinical data
+    // on a public endpoint or break every load balancer pointing at it.
+    //
+    // Both require health.view, the SAME permission the HTML pages check, and
+    // both are read-only: Phase 4 adds no write endpoints, exactly as Phase 2B
+    // added none for animals.
+    '/v1/animal-health' => [
+        'methods'    => ['GET'],
+        'handler'    => __DIR__ . '/v1/animal-health.php',
+        'auth'       => true,
+        'permission' => 'health.view',
+        // Serves /v1/animal-health/{animal id}. The bare path returns 404 from
+        // the handler, because a health summary is always about one animal.
+        'accepts_id' => true,
+    ],
+    '/v1/health-cases' => [
+        'methods'    => ['GET'],
+        'handler'    => __DIR__ . '/v1/health-cases.php',
+        'auth'       => true,
+        'permission' => 'health.view',
+        // Serves /v1/health-cases and /v1/health-cases/{case id}.
+        'accepts_id' => true,
+    ],
 ];
 
 // Route resolution: exact match first.

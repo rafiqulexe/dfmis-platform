@@ -146,3 +146,58 @@ function schemaCreateTable(PDO $conn, string $table, string $definition): string
     $conn->exec("CREATE TABLE `$table` ($definition) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     return "  ADD   table $table";
 }
+
+/**
+ * Widen an existing ENUM column so it also accepts $newValues.
+ *
+ * Phase 4 needs this for `cows.health_status`, which already carries real data
+ * under four values and must gain two more WITHOUT reinterpreting a single
+ * existing row.
+ *
+ * The current definition is read from information_schema and the new values are
+ * APPENDED to it — the existing values, their order and the column's default
+ * are all preserved, so no stored value changes meaning. When every requested
+ * value is already present the column is left untouched, which is what makes
+ * re-running the migration a no-op.
+ *
+ * MySQL stores an ENUM's members by ordinal, so appending is safe while
+ * reordering or removing would silently remap existing rows. This helper can
+ * therefore only ever widen.
+ */
+function schemaEnsureEnumValues(PDO $conn, string $table, string $column, array $newValues, string $suffix = ''): string {
+    if (!schemaColumnExists($conn, $table, $column)) {
+        return "  skip  $table.$column — column does not exist";
+    }
+
+    $stmt = $conn->prepare(
+        "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+    );
+    $stmt->execute([schemaDatabaseName($conn), $table, $column]);
+    $type = (string) $stmt->fetchColumn();
+
+    if (stripos($type, 'enum(') !== 0) {
+        return "  skip  $table.$column — not an ENUM (found '$type')";
+    }
+
+    // Parse the members out of enum('a','b',...). Values are single-quoted and
+    // any embedded quote is doubled, which is why this unescapes rather than
+    // splitting naively on commas.
+    preg_match_all("/'((?:[^']|'')*)'/", $type, $matches);
+    $existing = array_map(static function (string $value): string {
+        return str_replace("''", "'", $value);
+    }, $matches[1]);
+
+    $missing = array_values(array_diff($newValues, $existing));
+    if ($missing === []) {
+        return "  skip  $table.$column — already accepts " . implode(', ', $newValues);
+    }
+
+    $members = array_merge($existing, $missing);
+    $quoted = implode(', ', array_map(static function (string $value): string {
+        return "'" . str_replace("'", "''", $value) . "'";
+    }, $members));
+
+    $conn->exec("ALTER TABLE `$table` MODIFY COLUMN `$column` ENUM($quoted) $suffix");
+    return "  WIDEN $table.$column += " . implode(', ', $missing) . ' (existing values untouched)';
+}

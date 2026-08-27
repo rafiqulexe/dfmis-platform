@@ -33,6 +33,18 @@ const DFMS_TENANT_TABLES = [
     // be reachable through the repository helpers; an unregistered table is
     // refused by tenantFind()/tenantInsert() by design.
     'animal_identifiers', 'animal_lifecycle_events', 'animal_transfers', 'animal_ownership',
+    // Phase 4 — Veterinary & Animal Health. Every one carries farm_id and must
+    // be registered here: tenantFind()/tenantInsert() refuse an unregistered
+    // table by design, so forgetting a row here fails loudly at the first write
+    // rather than quietly producing an unscoped one.
+    'health_cases', 'health_status_events', 'health_observations', 'health_symptoms',
+    'health_diagnoses', 'veterinary_consultations', 'health_treatments',
+    'medication_administrations', 'vaccination_records', 'health_quarantines',
+    'withdrawal_periods', 'laboratory_tests',
+    // inventory_items was reachable only through joins before Phase 4;
+    // medication administration resolves an item id arriving from a form, which
+    // needs the scoped tenantFind() path.
+    'inventory_items',
 ];
 
 // Identifiers we will interpolate into SQL must be provably safe, because no

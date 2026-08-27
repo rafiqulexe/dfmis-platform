@@ -20,6 +20,10 @@ require_once '../../includes/repository.php';
 require_once '../../includes/validation.php';
 require_once '../../includes/settings.php';
 require_once '../../includes/livestock.php';
+// Phase 4 — the Health tab renders from healthAnimalSummary() and the health
+// registries. animalProfile() loads this file lazily too; requiring it here as
+// well makes the page's dependency explicit rather than incidental.
+require_once '../../includes/health.php';
 
 requireAuth('cows.view');
 
@@ -458,20 +462,284 @@ foreach ($profile['photos'] as $photo) {
     <?php endif; ?>
 
 <?php elseif ($tab === 'health'): ?>
-    <!-- ===================== HEALTH ===================== -->
+    <!-- ===================== HEALTH (Phase 4) ===================== -->
+    <?php
+    // Everything below comes from healthAnimalSummary(), the same function the
+    // health module and the API use, so the three surfaces cannot disagree
+    // about whether this animal is under treatment or restriction.
+    $health = $profile['health'];
+    $canHealthCreate = hasPermission('health.create');
+    $canHealthObserve = hasPermission('health.observe');
+    $canHealthMedicate = hasPermission('health.medicate');
+    $animalIdInt = (int) $animal['cow_id'];
+    ?>
+    <?php healthScopedStyles(); ?>
+    <div class="dfms-health-scope">
+
+    <!-- Current standing: the things someone needs to know before touching
+         this animal, above everything else on the tab. -->
     <section class="dfms-section">
         <div class="dfms-section-header">
             <div>
-                <h2>Recent health events</h2>
-                <p>The five most recent. The health module holds the full record.</p>
+                <h2>Current standing</h2>
+                <p>What applies to this animal right now.</p>
+            </div>
+            <div class="dfms-page-actions">
+                <?php if ($canHealthCreate && !$health['lifecycle_blocks']): ?>
+                    <a class="dfms-btn dfms-btn-secondary dfms-btn-sm"
+                       href="<?php echo BASE_URL; ?>modules/health/status.php?id=<?php echo $animalIdInt; ?>">Change status</a>
+                    <a class="dfms-btn dfms-btn-primary dfms-btn-sm"
+                       href="<?php echo BASE_URL; ?>modules/health/case_new.php?cow_id=<?php echo $animalIdInt; ?>">Open a case</a>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <?php if ($health['lifecycle_blocks']): ?>
+            <p style="border-left:3px solid var(--danger);background:var(--danger-bg);color:var(--danger-fg);padding:.75rem 1rem;border-radius:var(--radius-sm);font-size:var(--text-sm);">
+                <?php echo e(healthLifecycleBlockMessage($animal)); ?>
+            </p>
+        <?php endif; ?>
+
+        <div class="dfms-card">
+            <div class="dfms-card-body">
+                <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;">
+                    <?php echo dfms_badge_html(dfms_health_status_label($health['health_status']),
+                        dfms_health_status_tone($health['health_status']), true); ?>
+                    <?php if ($health['active_quarantine'] !== null): ?>
+                        <?php echo dfms_badge_html('In quarantine', 'danger', true); ?>
+                    <?php endif; ?>
+                    <?php foreach ($health['active_withdrawals'] as $withdrawal): ?>
+                        <?php echo dfms_badge_html(
+                            (DFMS_WITHDRAWAL_TYPES[$withdrawal['restriction_type']]['label'] ?? $withdrawal['restriction_type'])
+                            . ' withheld · ' . healthWithdrawalDaysRemaining($withdrawal) . 'd left', 'warning', true); ?>
+                    <?php endforeach; ?>
+                    <?php if (empty($health['active_withdrawals']) && $health['active_quarantine'] === null
+                              && empty($health['active_cases'])): ?>
+                        <?php echo dfms_badge_html('No active health concerns', 'success'); ?>
+                    <?php endif; ?>
+                </div>
+
+                <?php if (!empty($health['active_withdrawals'])): ?>
+                    <p class="dfms-hint" style="margin-bottom:1rem;">
+                        Withdrawal end dates are inclusive. DFMIS records these restrictions per animal but cannot
+                        verify them against production, because milk is recorded as a farm-level daily total.
+                    </p>
+                <?php endif; ?>
+
+                <?php if ($health['active_quarantine'] !== null): ?>
+                    <p style="margin:0 0 1rem;">
+                        <strong>Isolated since <?php echo e(fmt_instant($health['active_quarantine']['started_at'])); ?></strong>
+                        — <?php echo e($health['active_quarantine']['reason']); ?>
+                        <?php if ($health['active_quarantine']['location_name']): ?>
+                            (<?php echo e($health['active_quarantine']['location_name']); ?>)
+                        <?php endif; ?>
+                    </p>
+                <?php endif; ?>
+
+                <?php if (!$health['lifecycle_blocks']): ?>
+                <div style="display:flex;flex-wrap:wrap;gap:.5rem;">
+                    <?php if ($canHealthObserve): ?>
+                        <a class="dfms-btn dfms-btn-ghost dfms-btn-sm"
+                           href="<?php echo BASE_URL; ?>modules/health/observation.php?cow_id=<?php echo $animalIdInt; ?>">Record observation</a>
+                    <?php endif; ?>
+                    <?php if ($canHealthMedicate): ?>
+                        <a class="dfms-btn dfms-btn-ghost dfms-btn-sm"
+                           href="<?php echo BASE_URL; ?>modules/health/medication.php?cow_id=<?php echo $animalIdInt; ?>">Give medication</a>
+                        <a class="dfms-btn dfms-btn-ghost dfms-btn-sm"
+                           href="<?php echo BASE_URL; ?>modules/health/vaccination.php?cow_id=<?php echo $animalIdInt; ?>">Vaccination</a>
+                    <?php endif; ?>
+                    <?php if ($canHealthCreate): ?>
+                        <a class="dfms-btn dfms-btn-ghost dfms-btn-sm"
+                           href="<?php echo BASE_URL; ?>modules/health/consultation.php?cow_id=<?php echo $animalIdInt; ?>">Vet consultation</a>
+                        <a class="dfms-btn dfms-btn-ghost dfms-btn-sm"
+                           href="<?php echo BASE_URL; ?>modules/health/quarantine.php?cow_id=<?php echo $animalIdInt; ?>">Quarantine</a>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </section>
+
+    <!-- Active cases -->
+    <section class="dfms-section">
+        <div class="dfms-section-header">
+            <div><h2>Active cases</h2><p>Open episodes of illness or injury.</p></div>
+        </div>
+        <div class="dfms-card">
+            <?php if (empty($health['active_cases'])): ?>
+                <?php dfms_empty_state('No active cases', 'Nothing is currently being followed up for this animal.'); ?>
+            <?php else: ?>
+                <?php dfms_table_open([['label' => 'Case'], ['label' => 'Type'], ['label' => 'Severity'],
+                    ['label' => 'Status'], ['label' => 'Opened'], ['label' => '']]); ?>
+                <?php foreach ($health['active_cases'] as $case): ?>
+                    <?php $cMeta = DFMS_CASE_STATUSES[$case['status']] ?? ['label' => $case['status'], 'tone' => 'neutral']; ?>
+                    <tr>
+                        <?php
+                        dfms_cell('Case', '<span class="dfms-cell-strong">' . e($case['case_reference']) . '</span><br>'
+                            . '<span class="dfms-text-sm">' . e($case['title']) . '</span>');
+                        dfms_cell('Type', e(DFMS_CASE_TYPES[$case['case_type']] ?? $case['case_type']));
+                        dfms_cell('Severity', dfms_badge_html(ucfirst($case['severity']),
+                            $case['severity'] === 'urgent' ? 'danger' : ($case['severity'] === 'moderate' ? 'warning' : 'neutral')));
+                        dfms_cell('Status', dfms_badge_html($cMeta['label'], $cMeta['tone'], true));
+                        dfms_cell('Opened', e(fmt_date($case['opened_on'])));
+                        dfms_cell('', '<a class="dfms-btn dfms-btn-ghost dfms-btn-sm" href="'
+                            . e(BASE_URL . 'modules/health/case.php?id=' . (int) $case['case_id'])
+                            . '">Open<span class="dfms-visually-hidden"> case ' . e($case['case_reference']) . '</span></a>',
+                            'dfms-cell-actions');
+                        ?>
+                    </tr>
+                <?php endforeach; ?>
+                <?php dfms_table_close(); ?>
+            <?php endif; ?>
+        </div>
+    </section>
+
+    <!-- Treatments in progress -->
+    <section class="dfms-section">
+        <div class="dfms-section-header">
+            <div><h2>Treatments in progress</h2><p>Completed and cancelled courses remain in the timeline.</p></div>
+        </div>
+        <div class="dfms-card">
+            <?php if (empty($health['active_treatments'])): ?>
+                <?php dfms_empty_state('No treatment in progress', 'This animal is not currently under treatment.'); ?>
+            <?php else: ?>
+                <?php dfms_table_open([['label' => 'Treatment'], ['label' => 'Type'], ['label' => 'Started'],
+                    ['label' => 'Status'], ['label' => '']]); ?>
+                <?php foreach ($health['active_treatments'] as $treatment): ?>
+                    <?php $tMeta = DFMS_TREATMENT_STATUSES[$treatment['status']] ?? ['label' => $treatment['status'], 'tone' => 'neutral']; ?>
+                    <tr>
+                        <?php
+                        dfms_cell('Treatment', '<span class="dfms-cell-strong">' . e($treatment['name']) . '</span>');
+                        dfms_cell('Type', e(DFMS_TREATMENT_TYPES[$treatment['treatment_type']] ?? $treatment['treatment_type']));
+                        dfms_cell('Started', e(fmt_date($treatment['started_on'])));
+                        dfms_cell('Status', dfms_badge_html($tMeta['label'], $tMeta['tone'], true));
+                        dfms_cell('', $canHealthCreate && !$health['lifecycle_blocks']
+                            ? '<a class="dfms-btn dfms-btn-ghost dfms-btn-sm" href="'
+                              . e(BASE_URL . 'modules/health/treatment.php?close=' . (int) $treatment['treatment_id'])
+                              . '">Close out<span class="dfms-visually-hidden"> ' . e($treatment['name']) . '</span></a>'
+                            : '', 'dfms-cell-actions');
+                        ?>
+                    </tr>
+                <?php endforeach; ?>
+                <?php dfms_table_close(); ?>
+            <?php endif; ?>
+        </div>
+    </section>
+
+    <!-- Vaccination -->
+    <section class="dfms-section">
+        <div class="dfms-section-header">
+            <div><h2>Vaccination</h2><p>Upcoming doses. A scheduled dose is never marked given automatically.</p></div>
+        </div>
+        <div class="dfms-card">
+            <div class="dfms-card-body">
+                <?php if ($health['vaccination_count'] === 0): ?>
+                    <!-- The honest wording. "No records" is not the same claim as
+                         "unvaccinated", and stating the second would be inventing
+                         medical history this system does not have. -->
+                    <p class="dfms-muted" style="margin:0 0 1rem;">
+                        No vaccination has been recorded for this animal in DFMIS. That means its vaccination history
+                        is <strong>unknown</strong> here — not that it is unvaccinated.
+                    </p>
+                <?php else: ?>
+                    <p class="dfms-text-sm" style="margin:0 0 1rem;color:var(--text-muted);">
+                        <?php echo e($health['vaccination_count']); ?> dose<?php echo $health['vaccination_count'] === 1 ? '' : 's'; ?>
+                        recorded. The full history is on the Timeline tab.
+                    </p>
+                <?php endif; ?>
+
+                <?php if (empty($health['upcoming_vaccinations'])): ?>
+                    <p class="dfms-muted" style="margin:0;">Nothing scheduled.</p>
+                <?php else: ?>
+                    <?php dfms_table_open([['label' => 'Vaccine'], ['label' => 'Protects against'], ['label' => 'Scheduled'], ['label' => '']]); ?>
+                    <?php foreach ($health['upcoming_vaccinations'] as $vaccination): ?>
+                        <tr>
+                            <?php
+                            dfms_cell('Vaccine', '<span class="dfms-cell-strong">' . e($vaccination['vaccine_name']) . '</span>');
+                            dfms_cell('Protects against', e($vaccination['disease_target'] ?: '—'));
+                            dfms_cell('Scheduled', e(fmt_date($vaccination['scheduled_on'])));
+                            dfms_cell('', $canHealthMedicate && !$health['lifecycle_blocks']
+                                ? '<a class="dfms-btn dfms-btn-ghost dfms-btn-sm" href="'
+                                  . e(BASE_URL . 'modules/health/vaccination.php?given=' . (int) $vaccination['vaccination_id'])
+                                  . '">Mark given<span class="dfms-visually-hidden"> — ' . e($vaccination['vaccine_name']) . '</span></a>'
+                                : '', 'dfms-cell-actions');
+                            ?>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php dfms_table_close(); ?>
+                <?php endif; ?>
+            </div>
+        </div>
+    </section>
+
+    <!-- Recent observations -->
+    <section class="dfms-section">
+        <div class="dfms-section-header">
+            <div><h2>Recent observations</h2><p>Values are shown in this farm's measurement system.</p></div>
+        </div>
+        <div class="dfms-card">
+            <?php if (empty($health['recent_observations'])): ?>
+                <?php dfms_empty_state('No observations', 'Temperatures, weights and clinical signs appear here once recorded.'); ?>
+            <?php else: ?>
+                <?php dfms_table_open([['label' => 'Measurement'], ['label' => 'Value'], ['label' => 'When'], ['label' => 'By']]); ?>
+                <?php foreach ($health['recent_observations'] as $observation): ?>
+                    <tr>
+                        <?php
+                        dfms_cell('Measurement', e(DFMS_OBSERVATION_TYPES[$observation['observation_type']]['label']
+                            ?? $observation['observation_type']));
+                        dfms_cell('Value', '<span class="dfms-cell-strong">' . e(healthFormatObservation($observation)) . '</span>');
+                        dfms_cell('When', e(fmt_instant($observation['observed_at'])));
+                        dfms_cell('By', e($observation['username'] ?: '—'));
+                        ?>
+                    </tr>
+                <?php endforeach; ?>
+                <?php dfms_table_close(); ?>
+            <?php endif; ?>
+        </div>
+    </section>
+
+    <!-- Laboratory -->
+    <?php if (!empty($health['recent_lab_tests'])): ?>
+    <section class="dfms-section">
+        <div class="dfms-section-header">
+            <div><h2>Laboratory tests</h2><p>Reports are served only through the access-controlled file handler.</p></div>
+        </div>
+        <div class="dfms-card">
+            <?php dfms_table_open([['label' => 'Test'], ['label' => 'Laboratory'], ['label' => 'Sampled'], ['label' => 'Result']]); ?>
+            <?php foreach ($health['recent_lab_tests'] as $test): ?>
+                <tr>
+                    <?php
+                    dfms_cell('Test', '<span class="dfms-cell-strong">' . e($test['test_name']) . '</span>');
+                    dfms_cell('Laboratory', e($test['laboratory_name'] ?: '—'));
+                    dfms_cell('Sampled', e(fmt_date($test['sample_taken_on'])));
+                    dfms_cell('Result', $test['result_status'] === 'pending'
+                        ? dfms_badge_html('Pending', 'neutral')
+                        : ($test['result_code']
+                            ? dfms_badge_html(DFMS_LAB_RESULT_CODES[$test['result_code']] ?? $test['result_code'],
+                                in_array($test['result_code'], ['positive', 'abnormal'], true) ? 'danger' : 'success')
+                            : e(trim((string) $test['result_numeric'] . ' ' . (string) $test['result_unit']) ?: '—')));
+                    ?>
+                </tr>
+            <?php endforeach; ?>
+            <?php dfms_table_close(); ?>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <!-- The pre-Phase-4 free-form event log, preserved. -->
+    <section class="dfms-section">
+        <div class="dfms-section-header">
+            <div>
+                <h2>Health event log</h2>
+                <p>Free-form dated notes. The five most recent.</p>
             </div>
             <?php if (hasPermission('health.create')): ?>
-                <a class="dfms-btn dfms-btn-primary dfms-btn-sm" href="<?php echo BASE_URL; ?>modules/health/add.php">Log event</a>
+                <a class="dfms-btn dfms-btn-secondary dfms-btn-sm" href="<?php echo BASE_URL; ?>modules/health/add.php">Log event</a>
             <?php endif; ?>
         </div>
         <div class="dfms-card">
             <?php if (empty($profile['recentHealth'])): ?>
-                <?php dfms_empty_state('No health events', 'Nothing has been recorded for this animal yet.'); ?>
+                <?php dfms_empty_state('No health events', 'Nothing has been logged for this animal yet.'); ?>
             <?php else: ?>
                 <?php dfms_table_open([['label' => 'Date'], ['label' => 'Type'], ['label' => 'Severity'], ['label' => 'Description']]); ?>
                 <?php foreach ($profile['recentHealth'] as $event): ?>
@@ -487,11 +755,13 @@ foreach ($profile['photos'] as $photo) {
                 <?php endforeach; ?>
                 <?php dfms_table_close(); ?>
                 <p style="margin-top:1rem;">
-                    <a href="<?php echo BASE_URL; ?>modules/health/">View all health records →</a>
+                    <a href="<?php echo BASE_URL; ?>modules/health/">View the full health module &rarr;</a>
                 </p>
             <?php endif; ?>
         </div>
     </section>
+
+    </div>
 
 <?php elseif ($tab === 'documents' || $tab === 'photos'): ?>
     <!-- ===================== DOCUMENTS / PHOTOS ===================== -->
