@@ -299,15 +299,39 @@ check_absent "ai-status leaks no prompt body"    "$TMP/status.json" 'ABSOLUTE RU
 # There is deliberately NO endpoint that executes a tool by name. A generic
 # remote tool runner would hand a caller the whole read surface behind one
 # allow-list, so none exists — and these prove none was added by accident.
+#
+# Phase 5F ADDED tool calling and still adds no such route: tool execution
+# happens only inside the server-side orchestration, never on request.
 check_status "no generic tool-execution endpoint exists" \
     "$(curl -s -b "$ADMIN" -o /dev/null -w '%{http_code}' "$API/v1/ai-tools")" "404"
 check_status "a tool cannot be invoked over HTTP" \
     "$(curl -s -b "$ADMIN" -o /dev/null -w '%{http_code}' -X POST "$API/v1/ai-tools/get_animal")" "404"
+check_status "no agent/tool-run endpoint exists" \
+    "$(curl -s -b "$ADMIN" -o /dev/null -w '%{http_code}' -X POST "$API/v1/ai-agent")" "404"
+check_status "the tool registry is not published as a route" \
+    "$(curl -s -b "$ADMIN" -o /dev/null -w '%{http_code}' "$API/v1/ai-tool-registry")" "404"
 
 check_status "API rejects a write method on ai-status" \
     "$(curl -s -b "$ADMIN" -o /dev/null -w '%{http_code}' -X POST "$API/v1/ai-status")" "405"
 check_status "API rejects a write method on ai-conversations" \
     "$(curl -s -b "$ADMIN" -o /dev/null -w '%{http_code}' -X POST "$API/v1/ai-conversations")" "405"
+
+# ---- Phase 5F: the tool loop leaves no protocol on any surface ------------
+#
+# The assistant page and the conversation API both render model output. Neither
+# may ever show a user the tool protocol: raw tool names, JSON arguments,
+# tool_use/tool_result envelopes or correlation ids.
+curl -s -b "$ADMIN" -o "$TMP/ai-page.html" "$BASE/modules/ai/"
+check_status "the assistant page still renders" \
+    "$(curl -s -b "$ADMIN" -o /dev/null -w '%{http_code}' "$BASE/modules/ai/")" "200"
+check_absent "the assistant page has no PHP errors" "$TMP/ai-page.html" 'Fatal error'
+for TERM in "tool_use" "tool_result" "toolu_" "input_schema" "get_animal_health_summary"; do
+    check_absent "the assistant page exposes no tool protocol ($TERM)" "$TMP/ai-page.html" "$TERM"
+done
+
+for TERM in "tool_use" "tool_result" "toolu_" "input_schema" "get_farm_summary"; do
+    check_absent "the conversation API exposes no tool protocol ($TERM)" "$TMP/convs.json" "$TERM"
+done
 
 # The public liveness probe must be untouched by this phase and must not have
 # become an AI surface.

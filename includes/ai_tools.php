@@ -635,6 +635,124 @@ function aiToolDefinitions(): array {
     return $definitions;
 }
 
+// ===========================================================================
+// PROVIDER SCHEMA ADAPTER (Phase 5F)
+//
+// A model needs to be told what a tool takes, in JSON Schema. Our tools are
+// already described by the internal schema format in includes/ai_schema.php.
+//
+// THE ADAPTER GENERATES ONE FROM THE OTHER. It never gets a second, hand-kept
+// copy — a duplicated tool definition is a definition that drifts, and the
+// half that drifts is always the one nobody validates against. The registry
+// above stays the single source of truth for every tool's name, description
+// and arguments.
+//
+// WHAT THE PROVIDER SCHEMA IS AND IS NOT
+// It is a HINT that makes a well-behaved model produce well-formed arguments
+// the first time. It is NOT a security control and NOT a validation step. A
+// model can name a tool it was never offered and send arguments that match no
+// schema at all, so AiTool::execute() re-validates every argument against the
+// INTERNAL schema regardless. Nothing here weakens that; nothing here is
+// trusted by anything.
+// ===========================================================================
+
+/**
+ * Translate one internal schema node into JSON Schema.
+ *
+ * `additionalProperties: false` mirrors the internal rule that an unexpected
+ * key is a refusal, so the hint and the enforcement say the same thing. Where
+ * they cannot (JSON Schema has no way to express our global depth and response
+ * ceilings), the enforcement is the one that counts.
+ *
+ * @param array<string, mixed> $schema
+ * @return array<string, mixed>
+ */
+function aiToolJsonSchema(array $schema): array {
+    $type = (string) ($schema['type'] ?? 'string');
+
+    switch ($type) {
+        case 'object':
+            $properties = [];
+            $required = [];
+            foreach (($schema['fields'] ?? []) as $name => $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+                $properties[(string) $name] = aiToolJsonSchema($field);
+                if (!empty($field['required'])) {
+                    $required[] = (string) $name;
+                }
+            }
+            $json = [
+                'type'       => 'object',
+                'properties' => $properties,
+                'additionalProperties' => empty($schema['allow_unknown']) ? false : true,
+            ];
+            if ($required !== []) {
+                $json['required'] = $required;
+            }
+            return $json;
+
+        case 'array':
+            $items = $schema['items'] ?? ['type' => 'string'];
+            $json = ['type' => 'array', 'items' => is_array($items) ? aiToolJsonSchema($items) : ['type' => 'string']];
+            if (isset($schema['max_items'])) {
+                $json['maxItems'] = (int) $schema['max_items'];
+            }
+            if (isset($schema['min_items'])) {
+                $json['minItems'] = (int) $schema['min_items'];
+            }
+            return $json;
+
+        case 'enum':
+            return ['type' => 'string', 'enum' => array_values(array_map('strval', $schema['values'] ?? []))];
+
+        case 'integer':
+        case 'decimal':
+            $json = ['type' => $type === 'integer' ? 'integer' : 'number'];
+            if (isset($schema['min'])) {
+                $json['minimum'] = $type === 'integer' ? (int) $schema['min'] : (float) $schema['min'];
+            }
+            if (isset($schema['max'])) {
+                $json['maximum'] = $type === 'integer' ? (int) $schema['max'] : (float) $schema['max'];
+            }
+            return $json;
+
+        case 'boolean':
+            return ['type' => 'boolean'];
+
+        default:
+            $json = ['type' => 'string'];
+            if (isset($schema['max'])) {
+                $json['maxLength'] = (int) $schema['max'];
+            }
+            return $json;
+    }
+}
+
+/**
+ * Provider-ready definitions for the tools the CURRENT user may run.
+ *
+ * Filtered by permission before the model is ever told a tool exists, so a
+ * model is not tempted by a capability the person it is acting for does not
+ * have. That is politeness and prompt hygiene, NOT the boundary — the boundary
+ * is AiTool::execute(), which checks the same permission again on a name the
+ * model chose rather than on this list.
+ *
+ * @return list<array{name: string, description: string, input_schema: array<string, mixed>}>
+ */
+function aiToolProviderDefinitions(): array {
+    $definitions = [];
+    foreach (aiToolsAvailable() as $tool) {
+        $definitions[] = [
+            'name'         => $tool['name'],
+            'description'  => $tool['description'],
+            'input_schema' => aiToolJsonSchema($tool['input_schema']),
+        ];
+    }
+    return $definitions;
+}
+
 /**
  * Definitions of the tools the CURRENT user may actually run.
  *

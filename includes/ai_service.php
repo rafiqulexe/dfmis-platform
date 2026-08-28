@@ -156,9 +156,11 @@ function recordAiUsage(PDO $conn, array $ctx, $status, $inputTokens = 0, $output
  * $options may carry entity_type/entity_id ('cow', 'flock', 'pond', 'field'…)
  * so usage stays attributable without the core AI layer knowing any vertical.
  *
- * @param list<array{role: string, content: string}> $messages
+ * @param list<array{role: string, content: string|list<array<string, mixed>>}> $messages
  * @return array{ok: bool, text: ?string, reason: ?string, model: ?string,
- *               provider: ?string, input_tokens: int, output_tokens: int}
+ *               provider: ?string, input_tokens: int, output_tokens: int,
+ *               stop_reason?: string, tool_requests?: list<array<string, mixed>>,
+ *               blocks?: list<array<string, mixed>>}
  */
 function aiChat($feature, $systemPrompt, array $messages, array $options = []) {
     $provider = dfms_ai_provider();
@@ -270,6 +272,14 @@ function aiChat($feature, $systemPrompt, array $messages, array $options = []) {
         'provider'      => $provider->name(),
         'input_tokens'  => $result['input_tokens'],
         'output_tokens' => $result['output_tokens'],
+        // Phase 5F. Passed straight through in the INTERNAL vocabulary so the
+        // orchestration in includes/ai_agent.php can read them. A provider
+        // with no tool support omits all three and the defaults below make it
+        // indistinguishable from "the model gave a final answer" — which is
+        // exactly what it is.
+        'stop_reason'   => $result['stop_reason'] ?? 'end_turn',
+        'tool_requests' => $result['tool_requests'] ?? [],
+        'blocks'        => $result['blocks'] ?? [],
     ];
 }
 

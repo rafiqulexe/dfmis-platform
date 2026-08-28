@@ -372,7 +372,12 @@ final class AiPlatformTest extends TestCase
     {
         $prompt = aiPrompt('veterinarian_assistant');
 
-        self::assertSame(1, $prompt['version']);
+        // Phase 5F bumped this from 1 to 2 when the LOOKING THINGS UP section
+        // was added. The literal is pinned deliberately: a version that can
+        // drift without a test noticing is a version that means nothing on a
+        // usage row. Changing it here should be a conscious act, taken at the
+        // same time as the registry edit that earned it.
+        self::assertSame(2, $prompt['version']);
         self::assertNotSame('', trim($prompt['system']));
         self::assertTrue($prompt['metadata']['safety_critical']);
         self::assertTrue(aiPromptExists('veterinarian_assistant'));
@@ -415,7 +420,7 @@ final class AiPlatformTest extends TestCase
 
         self::assertSame('test-stub', $row['provider']);
         self::assertSame('veterinarian_assistant', $row['prompt_key']);
-        self::assertSame(1, (int) $row['prompt_version']);
+        self::assertSame(2, (int) $row['prompt_version']);
         self::assertSame(aiPromptVersion('veterinarian_assistant'), (int) $row['prompt_version']);
     }
 

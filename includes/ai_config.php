@@ -72,6 +72,27 @@ const DFMS_AI_CONFIG_DEFAULTS = [
     // write by accident.
     'max_attempts'        => 2,
     'retry_base_delay_ms' => 250,
+
+    // ---- Phase 5F: the agent loop -----------------------------------------
+    //
+    // max_model_calls   Provider round-trips for ONE user question. Three is
+    //                   the smallest number that supports the real flow —
+    //                   ask for a tool, read the result and possibly ask for
+    //                   another, then answer — and the loop deliberately stops
+    //                   OFFERING tools on the final call, so termination does
+    //                   not depend on the model choosing to stop.
+    //
+    // max_tool_calls    Total tool EXECUTIONS for one question, independent of
+    //                   how they are spread across those calls. Five covers
+    //                   "look at the animal, its health, its history and the
+    //                   farm's alerts" with one to spare. A question needing
+    //                   more than that is a question the model has misread.
+    //
+    // These are separate numbers because they bound different things: one
+    // bounds spend and latency, the other bounds how much of the farm's data a
+    // single question can sweep up.
+    'max_model_calls'     => 3,
+    'max_tool_calls'      => 5,
 ];
 
 /**
@@ -89,6 +110,13 @@ const DFMS_AI_CONFIG_BOUNDS = [
     'timeout_seconds'     => [5, 120],
     'max_attempts'        => [1, 4],
     'retry_base_delay_ms' => [0, 2000],
+    // Hard ceilings on the agent loop. The upper bounds are what make
+    // "the loop terminates" a property of the CONFIGURATION rather than a
+    // promise about the code: no value any operator or caller can supply
+    // permits more than 6 provider round-trips or 12 tool executions for one
+    // question, whatever the model asks for.
+    'max_model_calls'     => [1, 6],
+    'max_tool_calls'      => [0, 12],
 ];
 
 /** A model identifier must look like one. Never interpolated into SQL. */
@@ -162,6 +190,8 @@ function aiConfigEnvOverrides(bool $reset = false): array {
         'AI_TIMEOUT_SECONDS'  => ['timeout_seconds', 'int'],
         'AI_MAX_ATTEMPTS'     => ['max_attempts', 'int'],
         'AI_RETRY_DELAY_MS'   => ['retry_base_delay_ms', 'int'],
+        'AI_MAX_MODEL_CALLS'  => ['max_model_calls', 'int'],
+        'AI_MAX_TOOL_CALLS'   => ['max_tool_calls', 'int'],
     ];
     foreach ($numeric as $variable => [$key, $kind]) {
         $raw = getenv($variable);
@@ -197,7 +227,8 @@ function aiConfigEnvOverrides(bool $reset = false): array {
  *
  * @param array<string, mixed> $overrides
  * @return array{provider: string, model: string, temperature: ?float, max_tokens: int,
- *               timeout_seconds: int, max_attempts: int, retry_base_delay_ms: int}
+ *               timeout_seconds: int, max_attempts: int, retry_base_delay_ms: int,
+ *               max_model_calls: int, max_tool_calls: int}
  * @throws AiConfigViolation on an out-of-bounds caller override
  */
 function aiRequestConfig(array $overrides = []): array {
@@ -262,6 +293,8 @@ function aiConfigSummary(): array {
         'timeout_seconds'     => $config['timeout_seconds'],
         'max_attempts'        => $config['max_attempts'],
         'retry_base_delay_ms' => $config['retry_base_delay_ms'],
+        'max_model_calls'     => $config['max_model_calls'],
+        'max_tool_calls'      => $config['max_tool_calls'],
     ];
 }
 

@@ -138,6 +138,14 @@ function aiScopedStyles(): void {
     .ai-sources-title { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--text-muted); margin-bottom: var(--space-2); }
     .ai-sources ol { margin: 0; padding-left: 1.2rem; font-size: var(--text-sm); }
     .ai-sources li { margin-bottom: var(--space-1); }
+    /* Phase 5F — record lookups. Deliberately the SAME visual treatment as
+       .ai-sources: both answer "where did this come from", and giving one
+       provenance block a louder style than the other would imply a difference
+       in authority that does not exist. */
+    .ai-records { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--border); }
+    .ai-records-title { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--text-muted); margin-bottom: var(--space-2); }
+    .ai-records ul { margin: 0; padding-left: 1.2rem; font-size: var(--text-sm); }
+    .ai-records li { margin-bottom: var(--space-1); }
 
     .ai-conv-list { list-style: none; margin: 0; padding: 0; }
     .ai-conv-list li { border-bottom: 1px solid var(--border); }
@@ -170,6 +178,26 @@ function aiRenderMessage(array $message): void {
         . ($isAssistant ? ($isDegraded ? 'Assistant — unavailable' : 'Assistant') : 'You')
         . ' · ' . e(fmt_instant($message['created_at'])) . '</p>';
     echo '<div class="ai-msg-body">' . e((string) $message['content']) . '</div>';
+
+    // Phase 5F — which of the farm's own records the answer consulted.
+    //
+    // Rendered as plain sentences from a fixed label map, never as registry
+    // tool names, JSON arguments or protocol data. Only SUCCESSFUL lookups are
+    // stored, so this cannot announce a refusal: telling a stockperson that
+    // the assistant tried to read something it was not permitted to read is
+    // alarming, unactionable, and a description of the security layer working.
+    if ($isAssistant && !$isDegraded) {
+        $toolsUsed = aiVetMessageToolsUsed($message);
+        if ($toolsUsed !== []) {
+            echo '<div class="ai-records">';
+            echo '<p class="ai-records-title">Records checked while answering</p>';
+            echo '<ul>';
+            foreach ($toolsUsed as $tool) {
+                echo '<li>' . e(aiAgentToolLabel($tool)) . '</li>';
+            }
+            echo '</ul></div>';
+        }
+    }
 
     if ($isAssistant && !$isDegraded && !empty($message['sources'])) {
         echo '<div class="ai-sources">';

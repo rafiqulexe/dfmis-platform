@@ -10,7 +10,7 @@
 //     -> knowledge retrieval              (includes/ai_knowledge.php)
 //     -> farm health data                 (healthAnimalSummary, alerts)
 //     -> safe context builder             (LABELLED, never merged)
-//     -> provider                         (includes/ai_service.php)
+//     -> provider + controlled tool loop  (includes/ai_agent.php)
 //     -> structured response
 //     -> conversation history + audit
 //
@@ -51,6 +51,8 @@ require_once __DIR__ . '/health.php';
 require_once __DIR__ . '/ai_service.php';
 require_once __DIR__ . '/ai_prompts.php';
 require_once __DIR__ . '/ai_knowledge.php';
+require_once __DIR__ . '/ai_tools.php';
+require_once __DIR__ . '/ai_agent.php';
 
 const DFMS_AI_VET_FEATURE = 'vet_assistant';
 
@@ -81,7 +83,7 @@ class AiVetRuleViolation extends RuntimeException {}
  * The system prompt. A fixed contract — no caller may supply or extend it.
  *
  * PHASE 5E: the text now lives in the prompt registry
- * (includes/ai_prompts.php, key 'veterinarian_assistant', version 1) and is
+ * (includes/ai_prompts.php, key 'veterinarian_assistant') and is
  * read from there. It was moved VERBATIM — not reworded, not trimmed. This
  * function is retained rather than replaced at its call sites and in the four
  * Phase 5D tests that assert its content, because the guarantee those tests
@@ -550,8 +552,19 @@ function aiVetAsk(PDO $conn, array $input): array {
         'content' => aiVetBuildUserMessage($question, $animalContext, $retrieval),
     ];
 
-    // ---- provider ---------------------------------------------------------
-    $result = aiChat(DFMS_AI_VET_FEATURE, aiVetSystemPrompt(), $history, [
+    // ---- provider, through the controlled tool loop ------------------------
+    //
+    // PHASE 5F. aiAgentRun() replaces the single aiChat() call. It is NOT a
+    // second path to a model: each of its iterations IS an aiChat() call, so
+    // the plan gate, the rate limit, the retry policy, the usage row and the
+    // prompt metadata are the same ones a Phase 5D consultation got.
+    //
+    // WHAT DID NOT MOVE, and must not: the urgency scan below already ran on
+    // the user's own words BEFORE any of this, the animal context was resolved
+    // through the tenant-scoped helpers, and the banner is applied afterwards
+    // regardless of what came back. A tool cannot reach another farm (each one
+    // re-checks permission and tenancy for itself) and no tool can write.
+    $result = aiAgentRun($conn, DFMS_AI_VET_FEATURE, aiVetSystemPrompt(), $history, [
         'max_tokens'  => 1400,
         // Phase 5E: names the registered contract so the usage row records
         // WHICH version of the veterinary prompt produced this answer.
@@ -559,6 +572,10 @@ function aiVetAsk(PDO $conn, array $input): array {
         'entity_type' => $animalId !== null ? 'cow' : null,
         'entity_id'   => $animalId,
     ]);
+
+    // Names of the lookups that succeeded — provenance for the thread, and the
+    // only part of the tool exchange that outlives this request.
+    $toolsUsed = aiAgentToolsUsed($result['tool_log'] ?? []);
 
     // ---- persist ----------------------------------------------------------
     $answer = $result['ok'] ? (string) $result['text'] : null;
@@ -571,7 +588,7 @@ function aiVetAsk(PDO $conn, array $input): array {
     }
 
     $conversationId = tenantTransaction($conn, function (PDO $conn) use (
-        $conversation, $animalId, $question, $answer, $result, $retrieval, $urgency
+        $conversation, $animalId, $question, $answer, $result, $retrieval, $urgency, $toolsUsed
     ): int {
         if ($conversation === null) {
             $conversationId = tenantInsert($conn, 'ai_conversations', [
@@ -601,6 +618,9 @@ function aiVetAsk(PDO $conn, array $input): array {
             'failure_reason'  => $result['ok'] ? null : (string) $result['reason'],
             'provider'        => $result['provider'] ?? null,
             'model'           => $result['model'] ?? null,
+            // Names only, and only for lookups that succeeded. Never the
+            // arguments, the results, or a failed attempt (migration 011).
+            'tools_used'      => $toolsUsed === [] ? null : json_encode($toolsUsed),
             'input_tokens'    => (int) $result['input_tokens'],
             'output_tokens'   => (int) $result['output_tokens'],
             'urgency_flagged' => $urgency['urgent'] ? 1 : 0,
@@ -651,6 +671,18 @@ function aiVetAsk(PDO $conn, array $input): array {
         'sources_used'       => $result['ok'] ? count($retrieval['chunks']) : 0,
         'urgency_flagged'    => $urgency['urgent'],
         'question_chars'     => mb_strlen($question, 'UTF-8'),
+        // Phase 5F — tool activity, through the EXISTING audit log rather than
+        // a parallel one. Counts, registry names and denial CATEGORIES only:
+        // enough to answer "did the assistant read something it should not
+        // have" and "is a role being refused constantly", without copying
+        // arguments, results or clinical text into a second store.
+        //
+        // Failures are recorded here even though they are hidden from the
+        // user: a stream of permission_denied entries is exactly the signal a
+        // farm manager reviewing the audit log needs to see.
+        'model_calls'        => (int) ($result['model_calls'] ?? 1),
+        'tool_calls'         => (int) ($result['tool_calls'] ?? 0),
+        'tools'              => aiVetAuditToolSummary($result['tool_log'] ?? []),
     ]);
 
     return [
@@ -662,6 +694,67 @@ function aiVetAsk(PDO $conn, array $input): array {
         'sources'            => $result['ok'] ? $retrieval['chunks'] : [],
         'retrieval_strategy' => $retrieval['strategy'],
     ];
+}
+
+/**
+ * The tool names recorded against one stored message, decoded defensively.
+ *
+ * The column holds JSON written by us, but it is read back as data like
+ * anything else from a database: a malformed or hand-edited value yields an
+ * empty list rather than an error or a stray scalar reaching the renderer.
+ * Names are checked against the LIVE registry, so a tool that has since been
+ * removed cannot resurface as a label for a capability that no longer exists.
+ *
+ * @param array<string, mixed> $message
+ * @return list<string>
+ */
+function aiVetMessageToolsUsed(array $message): array {
+    $raw = $message['tools_used'] ?? null;
+    if (!is_string($raw) || $raw === '') {
+        return [];
+    }
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+    $names = [];
+    foreach ($decoded as $name) {
+        if (is_string($name) && aiToolFind($name) !== null && !in_array($name, $names, true)) {
+            $names[] = $name;
+        }
+    }
+    return $names;
+}
+
+/**
+ * Flatten the loop's tool log into a compact audit payload.
+ *
+ * One entry per tool NAME, not per call, so a model that asked for the same
+ * lookup three times produces one line with a count rather than three
+ * near-identical ones. Denial categories are carried because they are the
+ * interesting part; nothing else from the call is.
+ *
+ * @param list<array{name: string, ok: bool, reason: ?string}> $toolLog
+ * @return array<string, array{calls: int, ok: int, denials: list<string>}>
+ */
+function aiVetAuditToolSummary(array $toolLog): array {
+    $summary = [];
+    foreach ($toolLog as $entry) {
+        $name = (string) ($entry['name'] ?? 'unknown');
+        if (!isset($summary[$name])) {
+            $summary[$name] = ['calls' => 0, 'ok' => 0, 'denials' => []];
+        }
+        $summary[$name]['calls']++;
+        if (!empty($entry['ok'])) {
+            $summary[$name]['ok']++;
+            continue;
+        }
+        $reason = (string) ($entry['reason'] ?? 'unknown');
+        if (!in_array($reason, $summary[$name]['denials'], true)) {
+            $summary[$name]['denials'][] = $reason;
+        }
+    }
+    return $summary;
 }
 
 /** A short conversation title derived from the first question. */

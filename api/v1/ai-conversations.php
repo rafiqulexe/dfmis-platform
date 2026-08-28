@@ -89,6 +89,19 @@ if ($conversationParam !== null) {
                         'attribution'    => $source['attribution'],
                     ];
                 }, $message['sources'] ?? []),
+                // Phase 5F — which farm records the answer consulted, as the
+                // same human labels the UI shows. Provenance, exactly like
+                // `sources` above and for the same reason.
+                //
+                // NOT the registry tool names, NOT the arguments and NOT the
+                // results: a client has no use for our internal identifiers,
+                // and publishing them would turn an implementation detail into
+                // something consumers depend on. Failed and refused lookups do
+                // not appear at all — they are recorded in the audit log.
+                'records_checked' => array_map(
+                    'aiAgentToolLabel',
+                    aiVetMessageToolsUsed($message)
+                ),
                 // provider and model are deliberately ABSENT. Which vendor
                 // serves this installation is deployment information, not
                 // something an API consumer needs or should depend on.
