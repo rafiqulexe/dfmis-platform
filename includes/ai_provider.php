@@ -75,9 +75,37 @@ require_once __DIR__ . '/ai_config.php';
 // everywhere else.
 // ===========================================================================
 
+// ---------------------------------------------------------------------------
+// PHASE 7 — A FOURTH BLOCK TYPE: image
+//
+//   image        ['type' => 'image', 'media_type' => string, 'data' => string]
+//
+// `data` is the raw image bytes encoded as BASE64; `media_type` is a MIME type
+// from the storage layer's own allow-list. Nothing vendor-specific appears in
+// it, which is the whole point: Anthropic wants a nested `source` object and
+// Gemini wants `inline_data`, and neither shape may leak into the domain
+// module, the controller, the database or the UI.
+//
+// ADDED THE SAME WAY TOOL USE WAS — additively, with NO new abstract method.
+// An image is just another block in a user turn, so every existing provider,
+// every test double and every text-only caller is untouched. A provider that
+// does not understand the block DROPS it, which is what wireBlocks() and
+// wireParts() already do with anything unrecognised: the request degrades to
+// a text-only one rather than being rejected by the vendor.
+//
+// WHAT MUST NEVER HAPPEN TO `data`
+// It is never logged, never audited, never written to the database and never
+// echoed in an error. It is the largest and least interesting value in the
+// system, and one log line carrying a few megabytes of base64 is how a disk
+// fills up. The bytes live in ONE place — the file storage layer — and this
+// block is the only other copy that ever exists, for the duration of one
+// request.
+// ---------------------------------------------------------------------------
+
 const DFMS_AI_BLOCK_TEXT        = 'text';
 const DFMS_AI_BLOCK_TOOL_USE    = 'tool_use';
 const DFMS_AI_BLOCK_TOOL_RESULT = 'tool_result';
+const DFMS_AI_BLOCK_IMAGE       = 'image';
 
 /**
  * Why the model stopped, normalised to a closed set.
@@ -597,6 +625,31 @@ final class DfmsAnthropicProvider implements DfmsAiProvider
                     }
                     $wire[] = $result;
                     break;
+
+                // Phase 7. The internal block carries a media type and base64
+                // bytes; this vendor wants them nested under a `source` object
+                // with a `type` naming the encoding. That nesting exists only
+                // here — includes/ai_vision.php has never heard of it.
+                //
+                // A block with no data is DROPPED rather than sent empty: an
+                // image part the vendor rejects fails the whole request with a
+                // 400, which this codebase does not retry, so the model would
+                // simply stop answering the moment a photo was involved.
+                case DFMS_AI_BLOCK_IMAGE:
+                    $data = (string) ($block['data'] ?? '');
+                    $mediaType = (string) ($block['media_type'] ?? '');
+                    if ($data === '' || $mediaType === '') {
+                        break;
+                    }
+                    $wire[] = [
+                        'type'   => 'image',
+                        'source' => [
+                            'type'       => 'base64',
+                            'media_type' => $mediaType,
+                            'data'       => $data,
+                        ],
+                    ];
+                    break;
             }
         }
         return $wire;
@@ -1070,6 +1123,27 @@ final class DfmsGeminiProvider implements DfmsAiProvider
                         'name'     => $name,
                         'response' => self::wireToolResponse((string) ($block['content'] ?? ''),
                             !empty($block['is_error'])),
+                    ]];
+                    break;
+
+                // Phase 7. Gemini calls it `inline_data` with a `mime_type`,
+                // where Anthropic calls it a `source` with a `media_type`.
+                // That difference is absorbed HERE and nowhere else, which is
+                // the entire reason the internal vocabulary carries a flat
+                // media_type/data pair instead of either vendor's shape.
+                //
+                // Dropped rather than sent empty, for the same reason as the
+                // Anthropic mapping: a malformed image part is a 400, and a
+                // 400 is classified as 'invalid_request' and never retried.
+                case DFMS_AI_BLOCK_IMAGE:
+                    $data = (string) ($block['data'] ?? '');
+                    $mimeType = (string) ($block['media_type'] ?? '');
+                    if ($data === '' || $mimeType === '') {
+                        break;
+                    }
+                    $parts[] = ['inline_data' => [
+                        'mime_type' => $mimeType,
+                        'data'      => $data,
                     ]];
                     break;
             }

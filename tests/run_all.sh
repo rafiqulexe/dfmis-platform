@@ -16,6 +16,8 @@
 #   9. integration    — Animal Digital Twin (ISOLATED dfms_test server)
 #  10. integration    — Veterinary & Animal Health (ISOLATED dfms_test server)
 #  11. integration    — AI Veterinarian Assistant (ISOLATED dfms_test server)
+#  12. integration    — Production & Feeding (ISOLATED dfms_test server)
+#  13. integration    — AI animal image analysis (ISOLATED dfms_test server)
 #
 # The integration suites FAIL rather than skip when no server is running, so a
 # green result can never mean "half of this did not run".
@@ -60,7 +62,7 @@ record() { # record <suite name> <exit code>
 }
 
 # ---- 1. syntax ------------------------------------------------------------
-banner "1/12 Syntax check (php -l)"
+banner "1/13 Syntax check (php -l)"
 LINT_FAIL=0
 LINT_OK=0
 while IFS= read -r file; do
@@ -76,14 +78,14 @@ echo "  clean: $LINT_OK   failing: $LINT_FAIL"
 record "syntax check" "$LINT_FAIL"
 
 # ---- 2. unit --------------------------------------------------------------
-banner "2/12 Unit tests — validation layer"
+banner "2/13 Unit tests — validation layer"
 "$PHP" "$ROOT/tests/validation_unit_test.php"
 record "validation unit tests" "$?"
 
 # ---- 3. unit: PHPUnit (Phase 2B) -----------------------------------------
 # Runs against the ISOLATED test database (dfms_test), never the development
 # one. tests/bootstrap.php refuses to proceed otherwise.
-banner "3/12 Unit tests — PHPUnit"
+banner "3/13 Unit tests — PHPUnit"
 if [ -f "$ROOT/vendor/bin/phpunit" ]; then
     "$PHP" "$ROOT/vendor/bin/phpunit" --colors=never
     record "phpunit" "$?"
@@ -95,7 +97,7 @@ fi
 # ---- 4. unit: international foundation (Phase 2) --------------------------
 # Needs the database (it exercises the settings hierarchy against real rows)
 # but not the web server, so it runs before the server check.
-banner "4/12 Unit tests — international platform foundation"
+banner "4/13 Unit tests — international platform foundation"
 "$PHP" "$ROOT/tests/international_unit_test.php"
 record "international unit tests" "$?"
 
@@ -114,22 +116,22 @@ if ! curl -s -o /dev/null --max-time 5 "$BASE/index.php" 2>/dev/null; then
 fi
 
 # ---- 3. tenant isolation --------------------------------------------------
-banner "5/12 Integration — tenant isolation + RBAC"
+banner "5/13 Integration — tenant isolation + RBAC"
 bash "$ROOT/tests/tenant_isolation_test.sh"
 record "tenant isolation" "$?"
 
 # ---- 4. security regression ----------------------------------------------
-banner "6/12 Integration — security regression"
+banner "6/13 Integration — security regression"
 bash "$ROOT/tests/security_regression_test.sh"
 record "security regression" "$?"
 
 # ---- 6. international isolation (Phase 2) --------------------------------
-banner "7/12 Integration — international settings isolation"
+banner "7/13 Integration — international settings isolation"
 bash "$ROOT/tests/international_isolation_test.sh"
 record "international isolation" "$?"
 
 # ---- 8. API integration (Phase 2B) ---------------------------------------
-banner "8/12 Integration — API foundation"
+banner "8/13 Integration — API foundation"
 bash "$ROOT/tests/api_test.sh"
 record "api foundation" "$?"
 
@@ -142,7 +144,7 @@ record "api foundation" "$?"
 # If the test database or its server cannot be brought up, the suite FAILS.
 # It does not fall back to the development database silently — that would be
 # the exact hazard this isolation exists to remove.
-banner "9/12 Integration — Animal Digital Twin (isolated database)"
+banner "9/13 Integration — Animal Digital Twin (isolated database)"
 
 ANIMAL_PORT="${DFMS_ANIMAL_PORT:-8100}"
 ANIMAL_URL="http://localhost:${ANIMAL_PORT}"
@@ -186,7 +188,7 @@ fi
 #
 # Like every other integration suite here it FAILS rather than skips when the
 # server is unavailable, so a green run can never mean "this did not execute".
-banner "10/12 Integration — Veterinary & Animal Health (isolated database)"
+banner "10/13 Integration — Veterinary & Animal Health (isolated database)"
 
 if ! curl -s -o /dev/null --max-time 3 "$ANIMAL_URL/index.php" 2>/dev/null; then
     echo "  ERROR: the isolated test server is not available."
@@ -205,7 +207,7 @@ fi
 #
 # FAILS rather than skips when the server is unavailable, like every other
 # integration suite here.
-banner "11/12 Integration — AI Veterinarian Assistant (isolated database)"
+banner "11/13 Integration — AI Veterinarian Assistant (isolated database)"
 
 if ! curl -s -o /dev/null --max-time 3 "$ANIMAL_URL/index.php" 2>/dev/null; then
     echo "  ERROR: the isolated test server is not available."
@@ -221,7 +223,7 @@ fi
 # Shares the isolated test server suites 9-11 already started: it records
 # milkings and moves inventory stock, so it must never touch development
 # data. FAILS rather than skips when the server is unavailable.
-banner "12/12 Integration — Production & Feeding (isolated database)"
+banner "12/13 Integration — Production & Feeding (isolated database)"
 
 if ! curl -s -o /dev/null --max-time 3 "$ANIMAL_URL/index.php" 2>/dev/null; then
     echo "  ERROR: the isolated test server is not available."
@@ -230,6 +232,25 @@ if ! curl -s -o /dev/null --max-time 3 "$ANIMAL_URL/index.php" 2>/dev/null; then
 else
     DFMS_PRODUCTION_BASE_URL="$ANIMAL_URL" bash "$ROOT/tests/production_isolation_test.sh"
     record "production and feeding" "$?"
+fi
+
+# ---- 13. AI animal image analysis (Phase 7) -------------------------------
+#
+# Shares the isolated test server suites 9-12 already started. No real AI call
+# is made: the isolated server runs with empty provider keys, and asserting the
+# unconfigured degraded path is precisely the point.
+#
+# FAILS rather than skips when the server is unavailable, like every other
+# integration suite here.
+banner "13/13 Integration — AI animal image analysis (isolated database)"
+
+if ! curl -s -o /dev/null --max-time 3 "$ANIMAL_URL/index.php" 2>/dev/null; then
+    echo "  ERROR: the isolated test server is not available."
+    echo "  Create the test database first:  $PHP tools/test-db.php --create"
+    record "ai image analysis" 1
+else
+    DFMS_VISION_BASE_URL="$ANIMAL_URL" bash "$ROOT/tests/vision_isolation_test.sh"
+    record "ai image analysis" "$?"
 fi
 
 if [ -n "$ANIMAL_SERVER_PID" ]; then

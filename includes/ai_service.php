@@ -317,7 +317,12 @@ function aiComplete($feature, $systemPrompt, $userPrompt, array $options = []) {
  * to the phase that wants it, in that phase's code, under review.
  *
  * @param string $promptKey  a key of the registry in includes/ai_prompts.php
- * @param list<array{role: string, content: string}> $messages
+ * @param list<array{role: string, content: string|list<array<string, mixed>>}> $messages
+ *        Prose, or a list of blocks in the internal vocabulary documented in
+ *        includes/ai_provider.php. This mirrors aiChat(), which this function
+ *        delegates to unchanged — the annotation said `string` only because
+ *        Phase 5E predated block content, and a structured request carrying an
+ *        image (Phase 7) is the same call with the same gates, not a new path.
  * @param array<string, mixed> $schema  an ai_schema.php object schema
  *
  * @return array{ok: bool, data: mixed, reason: ?string, message: ?string,

@@ -124,6 +124,81 @@ commentary after it, no markdown code fence.
 - Enumerated fields must use one of the listed values exactly.
 PROMPT;
 
+// ---------------------------------------------------------------------------
+// The animal image observation contract (Phase 7).
+//
+// A SEPARATE prompt rather than a variation of the veterinary one, because the
+// two are held to different contracts. The veterinary assistant reasons over
+// RECORDED FACTS the farm already holds; this one reasons over a PHOTOGRAPH,
+// which is the weakest evidence in the entire product: it has no temperature,
+// no history, no palpation, one angle, unknown lighting and unknown scale.
+//
+// The single failure this text exists to prevent is a model looking at a photo
+// of a lesion and naming a disease. That output would be read as a diagnosis
+// no matter how it was hedged in the surrounding UI, and a farm acting on it
+// would delay a veterinary call. So the contract separates WHAT IS VISIBLE
+// from WHAT IT MIGHT MEAN, and forbids the second from ever being stated as
+// settled.
+//
+// The rules below are enforced in three independent places, and the prompt is
+// the WEAKEST of the three by design:
+//   1. here, as instruction;
+//   2. in includes/ai_schema.php, which rejects any field this schema does not
+//      define — there is nowhere for a confident diagnosis to be returned;
+//   3. in includes/ai_vision.php, whose deterministic urgency floor cannot be
+//      lowered by anything the model says.
+// A model that ignores all of this produces a REFUSED analysis, not a quiet one.
+// ---------------------------------------------------------------------------
+const DFMS_AI_PROMPT_ANIMAL_IMAGE_OBSERVATION = <<<'PROMPT'
+You are assisting a stockperson or farm manager by describing what is VISIBLE in a
+photograph of a farm animal. You are not examining the animal and you are not a
+veterinarian.
+
+WHAT A PHOTOGRAPH CAN AND CANNOT DO
+A photograph shows appearance from one angle at one moment. It cannot show
+temperature, pain, appetite, rumen function, gait over time, heart or lung sounds,
+or anything internal. Colour and scale in a photograph are unreliable. Treat every
+conclusion as provisional for these reasons and say so.
+
+ABSOLUTE RULES
+- NEVER state or imply that the animal has a particular disease. You may describe a
+  visible finding and say what it can be consistent with, phrased as a possibility.
+- NEVER give a numeric probability, percentage or confidence score for a condition.
+  Use only the bounded certainty words the schema allows.
+- NEVER prescribe or recommend a medication, a dose, a concentration, a route or a
+  withdrawal period. If treatment is being considered, the answer is that a
+  veterinarian decides.
+- NEVER describe something you cannot actually see in the image. If the region of
+  interest is out of frame, blurred, shadowed or obscured, record that as a
+  limitation instead of guessing what is there.
+- NEVER treat the person's own description as something you observed. What they told
+  you is a report; what is in the picture is an observation. Keep them separate.
+- NEVER present the absence of a visible sign as evidence that the animal is healthy.
+  A photograph cannot rule anything out.
+
+ESCALATION
+If the image shows something that could be time-critical — heavy bleeding, a deep or
+penetrating wound, severe swelling, prolapse, an animal that appears recumbent or
+collapsed, obvious respiratory distress, or a rapidly worsening lesion — set the
+urgency to the level that gets a veterinarian involved, and say plainly why. When you
+are unsure whether something is serious, choose the HIGHER urgency. Being wrong about
+urgency costs one phone call; being wrong the other way costs an animal.
+
+HOW TO ANSWER
+Report only what the schema asks for:
+- observations: what is visibly present, each with where on the animal it appears and
+  how clearly it can be seen.
+- possible_concerns: what those observations can be consistent with, each with the
+  reasoning and a bounded certainty. Omit this entirely rather than speculating.
+- urgency: one of the allowed levels.
+- recommended_actions: only from the allowed list. These are next steps for a person,
+  never treatments.
+- limitations: what about this image weakened the assessment. Never leave this empty;
+  every photograph has limitations.
+
+Write plainly, for someone standing next to the animal with a phone in their hand.
+PROMPT;
+
 /**
  * Every registered prompt.
  *
@@ -158,6 +233,33 @@ function aiPromptRegistry(): array {
                     // edit, and must move the version.
                     'safety_critical' => true,
                     'feature'         => 'vet_assistant',
+                ],
+            ],
+            // VERSION 1 (Phase 7). New capability, new contract.
+            //
+            // Deliberately NOT a variant of 'veterinarian_assistant': that
+            // prompt's rules are written for reasoning over recorded facts and
+            // say nothing about what a photograph cannot show, which is the
+            // whole risk here. Folding image rules into it would also have
+            // forced a version bump on a safety-critical prompt that four
+            // existing tests assert the wording of, for a feature it is not
+            // used by.
+            'animal_image_observation' => [
+                'version' => 1,
+                'purpose' => 'Describe what is visibly present in a photograph of an animal, '
+                    . 'separating observation from inference and escalating to a veterinarian '
+                    . 'rather than naming a disease. Phase 7.',
+                'system'  => DFMS_AI_PROMPT_ANIMAL_IMAGE_OBSERVATION,
+                'metadata' => [
+                    // The wording carries a clinical-safety guarantee: editing
+                    // it is a safety change, not a copy edit, and must move the
+                    // version.
+                    'safety_critical' => true,
+                    'feature'         => 'animal_image_analysis',
+                    // Sent with an image block in the user turn. Recorded here
+                    // so the registry states which prompts need a multimodal
+                    // provider rather than leaving it to be discovered.
+                    'multimodal'      => true,
                 ],
             ],
             'structured_output_contract' => [

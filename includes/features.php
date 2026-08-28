@@ -68,6 +68,21 @@ const DFMS_FEATURE_REGISTRY = [
         'default'     => true,
         'phase'       => 5,
     ],
+    // Phase 7 — BUILT, so it defaults to ON, exactly like ai_vet_assistant.
+    //
+    // Deliberately NOT reusing `future_disease_detection` below. That entry
+    // promises "image-based DIAGNOSTIC support", which is precisely what this
+    // feature does not and must not do: it describes what is visible in a
+    // photograph and escalates to a veterinarian. Switching that flag on would
+    // tell an operator they had enabled diagnosis, and would also contradict
+    // the roadmap entry it names. It stays off and unbuilt.
+    'ai_image_analysis' => [
+        'label'       => 'AI Animal Image Analysis',
+        'description' => 'AI-assisted observation of animal photographs. Describes visible findings '
+            . 'and escalates to a veterinarian; it does not diagnose. Phase 7.',
+        'default'     => true,
+        'phase'       => 7,
+    ],
     'future_ai_copilot' => [
         'label'       => 'AI Copilot',
         'description' => 'Conversational assistant over farm data. Phase 7 — not implemented.',

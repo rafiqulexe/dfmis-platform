@@ -178,6 +178,26 @@ $routes = [
         'auth'       => true,
         'permission' => 'ai.consult',
     ],
+    // ---- Phase 7: AI animal image analysis ---------------------------------
+    //
+    // ONE new route, READ-ONLY. Requesting an analysis is a POST to the HTML
+    // module (modules/cows/analyse.php) because it spends the organization
+    // metered AI allowance; exposing that as an API write would be a new
+    // security decision rather than a convenience, and this API has been
+    // read-only since Phase 2B.
+    //
+    // ai.consult, not cows.view: seeing an animal is not the same decision as
+    // seeing what an AI said about it, and it is the permission the HTML tab
+    // and /v1/ai-conversations already use for exactly this kind of read.
+    '/v1/animal-image-analysis' => [
+        'methods'    => ['GET'],
+        'handler'    => __DIR__ . '/v1/animal-image-analysis.php',
+        'auth'       => true,
+        'permission' => 'ai.consult',
+        // Serves /v1/animal-image-analysis/{animal id}. The bare path returns
+        // 404 from the handler: an analysis history is always about one animal.
+        'accepts_id' => true,
+    ],
     '/v1/ai-conversations' => [
         'methods'    => ['GET'],
         'handler'    => __DIR__ . '/v1/ai-conversations.php',

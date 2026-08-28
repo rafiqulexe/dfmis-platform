@@ -40,7 +40,7 @@ Audited from source. The roadmap was not trusted.
 | RAG | **Nothing.** No knowledge, document, chunk, embedding or retrieval table. | Built from scratch. |
 | `stored_files` | Tenant-scoped, access-controlled, PDF-capable since Phase 4. | Reused; no second file store. |
 | `DFMS_AUDIT_DENY_KEYS` | **Already contained `api_key` and `anthropic_api_key`.** | Credential redaction was already solved. Reused. |
-| `feature_flags` | `future_ai_copilot` (Phase 7, default off, four tests assert this). | Left alone; a new flag was added instead. |
+| `feature_flags` | `future_ai_copilot` (default off, four tests assert this). | Left alone; a new flag was added instead. Phase 7 did the same again, adding `ai_image_analysis` rather than reusing `future_disease_detection`. |
 | Navigation | An `'ai'` item with `url => null, status => 'soon'`. | Became a real link. |
 
 ### Audit findings that changed the design
@@ -492,8 +492,8 @@ for any of them** — the brief forbids it and a fake affordance is worse than a
 
 | Phase | Scope | What Phase 5D leaves ready |
 |---|---|---|
-| **5A — AI disease image detection** | Image-based diagnostic support | `stored_files` already stores images against any entity with a `medical_images` category and an `observation` photo category. `future_disease_detection` flag exists, default off. The provider interface would need a vision-capable method. |
-| **5B — Animal image analysis** | Body condition, lameness scoring from images | Same file architecture. `health_observations` already models body condition score and mobility as coded scales, so a vision result has a structured place to land. |
+| **5A — AI disease image detection** | Image-based **diagnostic** support | STILL DEFERRED. Phase 7 built AI-assisted image **observation**, which is deliberately not this: it describes what is visible and escalates to a veterinarian, and its schema has nowhere to put a diagnosis or a probability. `future_disease_detection` remains registered, unbuilt and default-off. See `docs/DFMIS_AI_IMAGE_ANALYSIS.md`. |
+| **5B — Animal image analysis** | Body condition, lameness scoring from images | PARTLY SUPERSEDED by Phase 7, which delivered general image observation over the same file architecture and added a provider-neutral `image` block to the message vocabulary. What remains unbuilt is **scoring**: mapping a vision result onto the coded `health_observations` scales for body condition and mobility. Phase 7 deliberately writes nothing into the health domain. |
 | **5C — Predictive disease ML models** | Risk prediction over history | Phase 4 made the clinical record row-shaped, coded and provenance-complete, with uncertainty explicit (`suspected`/`ruled_out`, `outcome: unknown`, NULL confidence). That is the feature-extraction substrate. No model, no training pipeline, no scoring exists. |
 
 Also future: IoT/sensor ingestion (`future_iot`, Phase 11), autonomous decisions (explicitly out of

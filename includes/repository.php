@@ -62,6 +62,13 @@ const DFMS_TENANT_TABLES = [
     // per-animal / per-item satellites and are separate rows with separate
     // meanings, never a replacement.
     'milk_yields', 'feed_consumption_events', 'feed_rations', 'feed_ration_items',
+    // Phase 7 — AI animal image analysis. Carries farm_id and is reached only
+    // through the repository helpers, so a foreign analysis id resolves to
+    // null exactly as a foreign animal or file id does.
+    //
+    // NOTE what is NOT here: no table was added for the image itself.
+    // `stored_files` is already registered above and already owns every byte.
+    'ai_image_analyses',
 ];
 
 // Identifiers we will interpolate into SQL must be provably safe, because no

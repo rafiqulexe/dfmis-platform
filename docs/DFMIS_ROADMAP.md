@@ -480,17 +480,65 @@ leaves ready for them is described in §15 of the AI architecture document.
 - Prompt versioning, response caching, cost telemetry per organization
 
 ---
-## Phase 6 · AI Disease & Vision
+## Phase 6 · AI Disease & Vision — **6A COMPLETE**
 
-- Image ingestion for visual diagnosis — lameness, mastitis, body condition scoring,
-  skin conditions
-- Vision model integration through the same `aiComplete()` seam
-- Confidence thresholds with **mandatory veterinary referral** below threshold
-- Training-data governance: consent, retention, tenant-scoped isolation of images
-- Regulatory positioning — decision *support*, explicitly not diagnosis
+> **Numbering note.** This roadmap entry is *roadmap* Phase 6. The delivery
+> branch calls the same work "Phase 7", because the implementation sequence and
+> this roadmap diverged at Phase 5. Neither is renumbered — the same convention
+> already used at Phase 8A, where delivery-Phase-6 work landed. See
+> `docs/DFMIS_AI_IMAGE_ANALYSIS.md`.
 
-**Exit criteria** — vision features carry clear confidence and referral guidance;
-image storage is tenant-isolated and consent-tracked.
+### 6A — AI-assisted image observation — **COMPLETE**
+
+Delivered as **observation, not diagnosis**. This is a deliberate narrowing of
+the original bullet list below, not an omission: naming a disease from a
+photograph is the one output that would be acted on as a diagnosis however it
+was hedged, so the capability was built with no way to produce one.
+
+- **Image analysis over the EXISTING file architecture.** `stored_files` is
+  reused unchanged — no second store, no second upload path, no duplicated
+  bytes. The analysis row references a `file_id` and holds no image data.
+- **Vision integrated through the SAME provider seam**, as this entry required.
+  A fourth internal block type (`image`) was added to the Phase 5F message
+  vocabulary, additively, with no new abstract method — so every existing
+  provider, test double and text-only caller is untouched. Anthropic and Gemini
+  each map it inside their own class; neither wire shape escapes.
+- **Bounded uncertainty instead of a confidence threshold.** The original bullet
+  asked for numeric confidence with referral below a threshold. That was
+  rejected on delivery: a percentage attached to a possible condition reads as
+  medical certainty. The schema has **no numeric field at all** — a test walks
+  it and asserts this — and uses three hedged certainty words instead.
+- **Mandatory veterinary escalation, enforced in code.** Phase 5D's deterministic
+  urgency scan runs on the person's own words before the model, and forms a
+  **floor the model cannot lower**. `veterinarian_review` is one of only four
+  next-step actions, and an absent or malformed model urgency defaults to it.
+- **Tenant-isolated images**, inherited from Phase 2B and re-verified per request:
+  the file must resolve inside the active farm, be linked to that animal, be an
+  analysable category and an allowed image type, and its bytes must still be
+  there. Every refusal is indistinguishable.
+- **Regulatory positioning stated in code, UI and payload**, not only in docs:
+  the page says it does not diagnose, and the API declares
+  `is_diagnosis: false` and `clinical_record: none`.
+- One new permission-free surface (`ai.consult` reused), one new feature flag
+  (`ai_image_analysis`, default ON), one new table, one read-only API route.
+- **No AI output becomes a health record.** No case, diagnosis, treatment,
+  medication, quarantine, status change or alert is created. A test snapshots
+  nine health tables around an `urgent` result and asserts nothing moved.
+
+### 6B — still deferred
+
+- **Disease detection / diagnostic support.** `future_disease_detection` remains
+  registered, unbuilt and default-off. 6A deliberately does not satisfy it.
+- **Scoring** — mapping a vision result onto the coded `health_observations`
+  scales for body condition, mobility and mastitis.
+- **Training-data governance** — consent capture and retention policy for images
+  used beyond a single analysis. 6A sends an image for one request and stores
+  no copy, so no new governance surface was created.
+- **Multi-image comparison over time**, and asynchronous processing.
+
+**Exit criteria** — 6A met: image storage is tenant-isolated, referral guidance is
+mandatory and code-enforced, and uncertainty is explicit and non-numeric. 6B's
+criteria (consent tracking, coded scoring) remain open.
 
 ---
 

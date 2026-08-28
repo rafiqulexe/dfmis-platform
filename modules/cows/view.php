@@ -24,6 +24,10 @@ require_once '../../includes/livestock.php';
 // registries. animalProfile() loads this file lazily too; requiring it here as
 // well makes the page's dependency explicit rather than incidental.
 require_once '../../includes/health.php';
+// Phase 7 — the AI Analysis tab. Required here rather than lazily so the
+// page's dependency on the image-analysis domain is explicit; the tab itself
+// still checks ai.consult before offering anything.
+require_once '../../includes/ai_vision.php';
 
 requireAuth('cows.view');
 
@@ -35,7 +39,7 @@ $profile = animalProfile($conn, $animalId);
 $animal = $profile['animal'];
 
 $v = new DfmsValidator($_GET);
-$tab = $v->enum('tab', ['overview', 'timeline', 'identity', 'parentage', 'health', 'production', 'documents', 'photos'], ['default' => 'overview']);
+$tab = $v->enum('tab', ['overview', 'timeline', 'identity', 'parentage', 'health', 'production', 'documents', 'photos', 'analysis'], ['default' => 'overview']);
 if ($v->fails()) {
     $tab = 'overview';
 }
@@ -46,6 +50,31 @@ if ($tab === 'timeline') {
     $pv = new DfmsValidator($_GET);
     $timelinePage = $pv->integer('page', ['nullable' => true, 'min' => 1, 'max' => 10000]) ?? 1;
     $timeline = animalTimeline($conn, $animalId, $timelinePage, 25);
+}
+
+// Phase 7 — AI image analysis. Loaded ONLY for its own tab: it costs two
+// queries and an availability check that the other seven tabs have no use for.
+//
+// Both reads are tenant-scoped, and the whole section is additionally gated on
+// ai.consult — cows.view is enough to see an animal, but not to see or spend
+// the organization's AI allowance.
+$analyses = [];
+$analysisImages = [];
+$analysisAvailability = ['available' => false, 'reason' => null, 'message' => null, 'plan' => null];
+if ($tab === 'analysis' && hasPermission('ai.consult')) {
+    $analyses = aiImageAnalysesForAnimal($conn, $animalId);
+    $analysisAvailability = aiImageAvailability($conn);
+    // Only images this animal actually owns, in a category that may be
+    // analysed. animalFiles() is already farm-scoped, so an image belonging to
+    // another animal or another farm can never appear in the picker — and the
+    // domain module re-checks all of it server-side regardless.
+    foreach (DFMS_AI_IMAGE_CATEGORIES as $analysisCategory) {
+        foreach (animalFiles($conn, $animalId, $analysisCategory) as $analysisFile) {
+            if (isset(DFMS_ALLOWED_IMAGE_TYPES[(string) $analysisFile['mime_type']])) {
+                $analysisImages[] = $analysisFile;
+            }
+        }
+    }
 }
 
 $displayName = animalDisplayName($animal);
@@ -154,6 +183,7 @@ foreach ($profile['photos'] as $photo) {
         'production' => 'Production',
         'documents'  => 'Documents',
         'photos'     => 'Photos',
+        'analysis'   => 'AI Analysis',
     ];
     foreach ($tabs as $key => $label):
         $isActive = $tab === $key;
@@ -981,6 +1011,271 @@ foreach ($profile['photos'] as $photo) {
             </div>
         </section>
     <?php endif; ?>
+<?php elseif ($tab === 'analysis'): ?>
+    <!-- ===================== AI IMAGE ANALYSIS =====================
+         AI-ASSISTED OBSERVATION, NOT DIAGNOSIS.
+
+         Three rules this markup follows and must keep following:
+           1. No raw provider JSON is ever rendered. Every value shown here has
+              been through aiImageDecodeResult(), which re-validates against the
+              schema and returns null rather than a partial structure.
+           2. No provider internals are ever rendered. A failure shows a mapped
+              message from aiImageFailureMessage(), never a stored token and
+              never an upstream body.
+           3. The framing is stated on the page itself, not only in the docs. A
+              user who reads nothing but this tab must still come away knowing
+              that a photograph cannot diagnose anything.
+    -->
+    <?php if (!hasPermission('ai.consult')): ?>
+        <section class="dfms-section">
+            <div class="dfms-card">
+                <?php dfms_empty_state('AI analysis is not available to your role',
+                    'Ask a farm manager or veterinarian if you need an image reviewed.'); ?>
+            </div>
+        </section>
+    <?php else: ?>
+    <section class="dfms-section">
+        <div class="dfms-section-header">
+            <div>
+                <h2>AI image analysis</h2>
+                <p>
+                    AI-assisted observation of a photograph. It describes what is
+                    <strong>visible</strong> and when to involve a veterinarian.
+                    <strong>It does not diagnose disease.</strong>
+                </p>
+            </div>
+        </div>
+        <div class="dfms-card">
+            <?php dfms_alert(aiImageDisclaimer(), 'info'); ?>
+        </div>
+    </section>
+
+    <?php // ---- request form, only when the feature can actually answer ---- ?>
+    <section class="dfms-section">
+        <div class="dfms-card">
+            <h2 style="font-size:1.05rem;margin-bottom:1rem;">Analyse a photo</h2>
+            <?php if (!$analysisAvailability['available']): ?>
+                <?php
+                // An honest degraded state. A form that posts into a void is
+                // worse than no form, so the form is not rendered at all.
+                dfms_alert((string) $analysisAvailability['message'], 'warning');
+                ?>
+            <?php elseif (empty($analysisImages)): ?>
+                <?php dfms_empty_state('No photos to analyse',
+                    'Upload a photo of this animal first, then come back.',
+                    dfms_button_html('Go to Photos',
+                        animal_tab_url((int) $animal['cow_id'], 'photos'), 'secondary')); ?>
+            <?php else: ?>
+                <form method="POST" action="<?php echo BASE_URL; ?>modules/cows/analyse.php">
+                    <?php csrf_field(); ?>
+                    <input type="hidden" name="animal_id" value="<?php echo (int) $animal['cow_id']; ?>">
+
+                    <div class="dfms-field">
+                        <label for="file_id">Photo</label>
+                        <select id="file_id" name="file_id" required>
+                            <?php foreach ($analysisImages as $analysisImage): ?>
+                                <option value="<?php echo (int) $analysisImage['file_id']; ?>">
+                                    <?php
+                                    echo e(($analysisImage['caption'] ?: $analysisImage['original_name'])
+                                        . ' — ' . fmt_date(substr((string) $analysisImage['created_at'], 0, 10)));
+                                    ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="dfms-field">
+                        <label for="reported_signs">What have you noticed? <span class="dfms-text-muted">(optional)</span></label>
+                        <textarea id="reported_signs" name="reported_signs" rows="3" maxlength="500"
+                                  aria-describedby="reported-help"></textarea>
+                        <small id="reported-help" class="dfms-text-muted">
+                            Describe what you have seen in your own words. This is recorded as your
+                            report, kept separate from what the AI sees in the photo, and is checked
+                            for emergency signs independently of the AI.
+                        </small>
+                    </div>
+
+                    <button type="submit" class="dfms-btn dfms-btn-primary">Analyse photo</button>
+                </form>
+            <?php endif; ?>
+        </div>
+    </section>
+
+    <?php // ---- history + results ---------------------------------------- ?>
+    <section class="dfms-section">
+        <div class="dfms-section-header">
+            <div>
+                <h2>Previous analyses</h2>
+                <p>Every analysis requested for this animal, newest first.</p>
+            </div>
+        </div>
+
+        <?php if (empty($analyses)): ?>
+            <div class="dfms-card">
+                <?php dfms_empty_state('No analyses yet',
+                    'Analyse a photo above to see what an AI observes in it.'); ?>
+            </div>
+        <?php else: ?>
+            <?php foreach ($analyses as $analysis): ?>
+                <?php
+                // Decoded and RE-VALIDATED. Null when the row holds no result,
+                // or holds one that no longer satisfies the schema — in which
+                // case nothing is rendered rather than something unchecked.
+                $analysisResult = aiImageDecodeResult($analysis['result_json'] ?? null);
+                $analysisStatus = (string) $analysis['status'];
+                ?>
+                <div class="dfms-card" style="margin-bottom:1rem;">
+                    <div style="display:flex;gap:1rem;justify-content:space-between;flex-wrap:wrap;align-items:flex-start;">
+                        <div>
+                            <strong><?php echo e(fmt_instant($analysis['created_at'])); ?></strong>
+                            <div class="dfms-text-muted" style="font-size:.85rem;">
+                                <?php echo e($analysis['caption'] ?: ($analysis['original_name'] ?: 'Photo')); ?>
+                                <?php if (!empty($analysis['requested_by_name'])): ?>
+                                    · requested by <?php echo e($analysis['requested_by_name']); ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:.4rem;flex-wrap:wrap;">
+                            <?php
+                            echo dfms_badge_html(aiImageStatusLabel($analysisStatus),
+                                $analysisStatus === 'completed' ? 'success'
+                                    : ($analysisStatus === 'processing' || $analysisStatus === 'pending'
+                                        ? 'info' : 'neutral'));
+                            if ($analysisStatus === 'completed') {
+                                echo ' ' . dfms_badge_html(
+                                    aiImageUrgencyLabel($analysis['urgency']),
+                                    aiImageUrgencyTone($analysis['urgency'])
+                                );
+                            }
+                            ?>
+                        </div>
+                    </div>
+
+                    <?php if (!empty($analysis['urgency_flagged'])): ?>
+                        <div style="margin-top:.85rem;">
+                            <?php
+                            // THE DETERMINISTIC SIGNAL, rendered for EVERY
+                            // status — completed, failed, unavailable or stuck.
+                            //
+                            // It must not be nested inside the completed branch.
+                            // The scan ran on the person's own words BEFORE the
+                            // model and independently of it, exactly as Phase 5D
+                            // established, so it is still true when the provider
+                            // failed — and a failed analysis is precisely when
+                            // someone is most likely to be left with nothing.
+                            // Hiding an emergency warning because an unrelated
+                            // API call errored would invert the whole point of
+                            // scanning server-side.
+                            dfms_alert('Your own description mentioned signs that can indicate an '
+                                . 'emergency. Contact your veterinarian now rather than waiting. '
+                                . 'Anything else shown here is background information only.', 'error');
+                            ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if ($analysisStatus !== 'completed'): ?>
+                        <div style="margin-top:.85rem;">
+                            <?php
+                            // A non-completed analysis shows a MAPPED message.
+                            // The stored failure_reason is a machine token and
+                            // is never printed; an unrecognised one still maps
+                            // to safe generic text.
+                            if ($analysisStatus === 'pending' || $analysisStatus === 'processing') {
+                                dfms_alert('This analysis did not finish. Nothing was recorded for it. '
+                                    . 'You can request a new one above.', 'warning');
+                            } else {
+                                dfms_alert(aiImageFailureMessage($analysis['failure_reason']), 'warning');
+                            }
+                            ?>
+                        </div>
+                    <?php elseif ($analysisResult === null): ?>
+                        <div style="margin-top:.85rem;">
+                            <?php dfms_alert('The stored result for this analysis could not be read back safely, '
+                                . 'so it is not shown.', 'warning'); ?>
+                        </div>
+                    <?php else: ?>
+                        <?php if (!empty($analysis['reported_signs'])): ?>
+                            <div style="margin-top:.85rem;">
+                                <h3 style="font-size:.92rem;margin-bottom:.3rem;">You reported</h3>
+                                <p class="dfms-text-muted" style="margin:0;">
+                                    <?php echo e($analysis['reported_signs']); ?>
+                                </p>
+                            </div>
+                        <?php endif; ?>
+
+                        <div style="margin-top:.85rem;">
+                            <h3 style="font-size:.92rem;margin-bottom:.3rem;">Visible in the photo</h3>
+                            <ul style="margin:0;padding-left:1.1rem;">
+                                <?php foreach ($analysisResult['observations'] as $observation): ?>
+                                    <li style="margin-bottom:.3rem;">
+                                        <?php echo e((string) $observation['observation']); ?>
+                                        <span class="dfms-text-muted" style="font-size:.83rem;">
+                                            <?php
+                                            $meta = [];
+                                            if (!empty($observation['location'])) {
+                                                $meta[] = (string) $observation['location'];
+                                            }
+                                            if (!empty($observation['severity'])) {
+                                                $meta[] = (string) $observation['severity'];
+                                            }
+                                            $meta[] = (string) $observation['visibility'] . ' in the image';
+                                            echo e('(' . implode(', ', $meta) . ')');
+                                            ?>
+                                        </span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+
+                        <?php if (!empty($analysisResult['possible_concerns'])): ?>
+                            <div style="margin-top:.85rem;">
+                                <h3 style="font-size:.92rem;margin-bottom:.3rem;">
+                                    What this could be consistent with
+                                </h3>
+                                <p class="dfms-text-muted" style="font-size:.83rem;margin:0 0 .4rem;">
+                                    Possibilities only. A photograph cannot confirm or rule out any of these.
+                                </p>
+                                <ul style="margin:0;padding-left:1.1rem;">
+                                    <?php foreach ($analysisResult['possible_concerns'] as $concern): ?>
+                                        <li style="margin-bottom:.3rem;">
+                                            <?php echo e((string) $concern['concern']); ?>
+                                            <span class="dfms-text-muted" style="font-size:.83rem;">
+                                                (<?php echo e((string) $concern['certainty']); ?>)
+                                            </span>
+                                            <br>
+                                            <span class="dfms-text-muted" style="font-size:.85rem;">
+                                                <?php echo e((string) $concern['rationale']); ?>
+                                            </span>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        <?php endif; ?>
+
+                        <div style="margin-top:.85rem;">
+                            <h3 style="font-size:.92rem;margin-bottom:.3rem;">Suggested next steps</h3>
+                            <ul style="margin:0;padding-left:1.1rem;">
+                                <?php foreach ($analysisResult['recommended_actions'] as $action): ?>
+                                    <li><?php echo e(aiImageActionLabel((string) $action)); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+
+                        <div style="margin-top:.85rem;">
+                            <h3 style="font-size:.92rem;margin-bottom:.3rem;">What this photo could not show</h3>
+                            <ul style="margin:0;padding-left:1.1rem;">
+                                <?php foreach ($analysisResult['limitations'] as $limitation): ?>
+                                    <li class="dfms-text-muted"><?php echo e((string) $limitation); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </section>
+    <?php endif; ?>
+
 <?php endif; ?>
 
 <?php require_once '../../includes/footer.php'; ?>
