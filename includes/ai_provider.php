@@ -38,6 +38,11 @@
 // ============================================================================
 
 require_once __DIR__ . '/../config/database.php';
+// Phase 5E. The two files reference each other deliberately: configuration
+// describes how a provider is called, and the provider is what a configuration
+// summary reports on. The cycle is inert — neither file runs code at include
+// time that needs the other's declarations.
+require_once __DIR__ . '/ai_config.php';
 
 /**
  * A completion backend.
@@ -87,6 +92,17 @@ const DFMS_AI_FAILURE_REASONS = [
     'upstream_error'     => 'The AI service returned an error.',
     'empty_response'     => 'The AI service returned no content.',
     'transport_error'    => 'The AI service could not be reached.',
+
+    // ---- Phase 5E ---------------------------------------------------------
+    // Split out of 'upstream_error' so the retry policy can tell a transient
+    // server-side failure (worth another attempt) from a request the provider
+    // rejected as malformed (retrying identical bytes cannot help).
+    'invalid_request'    => 'The AI service rejected the request.',
+    // OUR limiter, not the provider's. Distinct from 'rate_limited' because
+    // the two mean different things to the person reading the message and to
+    // whoever is diagnosing it later: one is a busy vendor, the other is this
+    // installation refusing to spend more on a shared allowance right now.
+    'ai_rate_limited'    => 'Too many AI requests just now. Wait a moment and try again.',
 ];
 
 /** Safe, user-facing text for a failure token. Never echoes an upstream body. */
@@ -205,7 +221,14 @@ final class DfmsAnthropicProvider implements DfmsAiProvider
             if ($httpCode === 429) {
                 return $fail('rate_limited');
             }
-            return $fail($httpCode === 401 || $httpCode === 403 ? 'not_configured' : 'upstream_error');
+            if ($httpCode === 401 || $httpCode === 403) {
+                return $fail('not_configured');
+            }
+            // Phase 5E: 4xx is OUR mistake, 5xx is theirs, and only the latter
+            // is worth retrying. Collapsing both into 'upstream_error' meant a
+            // rejected request would be sent again, unchanged, to be rejected
+            // again — burning the provider's patience proving nothing.
+            return $fail($httpCode >= 400 && $httpCode < 500 ? 'invalid_request' : 'upstream_error');
         }
 
         $decoded = json_decode((string) $raw, true);
@@ -290,8 +313,14 @@ function dfms_ai_provider(): DfmsAiProvider {
     }
     static $provider = null;
     if ($provider === null) {
+        // Phase 5E: the model and the socket timeout now come from the
+        // validated configuration layer rather than from a raw getenv() here.
+        // A malformed AI_MODEL used to reach this constructor unchecked; it is
+        // now discarded with a log line and the default is used instead.
+        $config = aiRequestConfig();
         $provider = new DfmsAnthropicProvider(
-            (string) (getenv('AI_MODEL') ?: 'claude-sonnet-5')
+            $config['model'],
+            $config['timeout_seconds']
         );
     }
     return $provider;

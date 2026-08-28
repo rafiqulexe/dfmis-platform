@@ -49,9 +49,20 @@ require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/livestock.php';
 require_once __DIR__ . '/health.php';
 require_once __DIR__ . '/ai_service.php';
+require_once __DIR__ . '/ai_prompts.php';
 require_once __DIR__ . '/ai_knowledge.php';
 
 const DFMS_AI_VET_FEATURE = 'vet_assistant';
+
+/**
+ * The registry key for this assistant's system prompt (Phase 5E).
+ *
+ * The prompt TEXT moved to includes/ai_prompts.php unchanged. What is gained
+ * is that the contract now has a version recorded on every usage row, so an
+ * answer given today can still be traced to the exact instructions that
+ * produced it after the prompt has been edited twice.
+ */
+const DFMS_AI_VET_PROMPT_KEY = 'veterinarian_assistant';
 
 /** How many prior turns are replayed to the model. */
 const DFMS_AI_VET_HISTORY_TURNS = 10;
@@ -69,47 +80,16 @@ class AiVetRuleViolation extends RuntimeException {}
 /**
  * The system prompt. A fixed contract — no caller may supply or extend it.
  *
- * Written as instructions the model can actually follow rather than as legal
- * boilerplate, because a rule the model cannot act on is decoration.
+ * PHASE 5E: the text now lives in the prompt registry
+ * (includes/ai_prompts.php, key 'veterinarian_assistant', version 1) and is
+ * read from there. It was moved VERBATIM — not reworded, not trimmed. This
+ * function is retained rather than replaced at its call sites and in the four
+ * Phase 5D tests that assert its content, because the guarantee those tests
+ * make — that the prompt is FIXED and never caller-supplied — is a property of
+ * this function, not of where the string happens to be stored.
  */
 function aiVetSystemPrompt(): string {
-    return <<<PROMPT
-You are a veterinary decision-support assistant inside a farm management system.
-You support a stockperson or farm manager. You do NOT replace a licensed veterinarian.
-
-ABSOLUTE RULES
-- Never state that a diagnosis is confirmed. You cannot examine the animal.
-- Never present a treatment as a prescription or an instruction to follow.
-- Never invent a medication dose, concentration, route or withdrawal period. If a
-  specific dose matters, say that it must come from the product label or the
-  attending veterinarian.
-- Never invent facts about this animal. If something is not in the provided
-  context, say it is not recorded rather than guessing.
-- Never hide uncertainty. If the information is thin, say what is missing.
-
-HOW TO USE THE CONTEXT
-The context is divided into labelled blocks that carry DIFFERENT certainty:
-- ANIMAL RECORD DATA and HEALTH HISTORY are recorded facts from the farm's system.
-- RETRIEVED KNOWLEDGE is text from the farm's own knowledge base. Cite it by its
-  document title when you rely on it.
-- USER-REPORTED is what the person told you. It is an observation, not a
-  measurement, and may be incomplete or mistaken.
-Do not treat a user report as an established fact, and do not treat a recorded
-fact as something the user merely believes.
-If RETRIEVED KNOWLEDGE is empty, say plainly that the farm's knowledge base had
-nothing relevant, and answer from general veterinary reasoning while making that
-distinction clear.
-
-HOW TO ANSWER
-Answer in short prose under these headings, omitting any that do not apply:
-- What the records show
-- Possible explanations (as possibilities, ordered by how well they fit)
-- What is missing (specific information that would change the assessment)
-- Warning signs to watch for
-- When to call a veterinarian
-
-Be concise and practical. Write for someone standing next to the animal.
-PROMPT;
+    return aiPromptSystem(DFMS_AI_VET_PROMPT_KEY);
 }
 
 /**
@@ -573,6 +553,9 @@ function aiVetAsk(PDO $conn, array $input): array {
     // ---- provider ---------------------------------------------------------
     $result = aiChat(DFMS_AI_VET_FEATURE, aiVetSystemPrompt(), $history, [
         'max_tokens'  => 1400,
+        // Phase 5E: names the registered contract so the usage row records
+        // WHICH version of the veterinary prompt produced this answer.
+        'prompt_key'  => DFMS_AI_VET_PROMPT_KEY,
         'entity_type' => $animalId !== null ? 'cow' : null,
         'entity_id'   => $animalId,
     ]);
@@ -660,6 +643,10 @@ function aiVetAsk(PDO $conn, array $input): array {
         'failure_reason'     => $result['ok'] ? null : (string) $result['reason'],
         'provider'           => $result['provider'] ?? null,
         'model'              => $result['model'] ?? null,
+        // Phase 5E: which contract was in force. Machine tokens and an
+        // integer — the prompt BODY is deliberately not copied here.
+        'prompt_key'         => DFMS_AI_VET_PROMPT_KEY,
+        'prompt_version'     => aiPromptVersion(DFMS_AI_VET_PROMPT_KEY),
         'retrieval_strategy' => $retrieval['strategy'],
         'sources_used'       => $result['ok'] ? count($retrieval['chunks']) : 0,
         'urgency_flagged'    => $urgency['urgent'],

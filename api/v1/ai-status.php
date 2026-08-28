@@ -30,6 +30,7 @@ if (!defined('DFMS_API_DISPATCHED')) {
 // each handler requires what it actually uses.
 require_once __DIR__ . '/../../includes/features.php';
 require_once __DIR__ . '/../../includes/ai_vet.php';
+require_once __DIR__ . '/../../includes/ai_tools.php';
 
 $conn = getDBConnection();
 $availability = aiVetAvailability($conn);
@@ -53,6 +54,32 @@ if (!$featureEnabled) {
 // already visible to it. It carries no provider information.
 $plan = $availability['plan'];
 
+// ---------------------------------------------------------------------------
+// PHASE 5E — the `platform` block.
+//
+// Added to THIS endpoint rather than as a new route. Phase 5E deliberately
+// creates no new public surface: a second endpoint would be a second thing to
+// authorize, rate-limit and keep in step, to answer a question this one is
+// already about. In particular there is NO generic tool-execution endpoint —
+// a route that runs a tool by name from a request body would hand a remote
+// caller the registry, and the allow-list would be the only thing between it
+// and every read in the system.
+//
+// WHAT IT CONTAINS, and why each is safe to state:
+//   provider/model     already recorded on every ai_messages row and shown in
+//                      the conversation UI, so this reveals nothing new
+//   prompt key/version the identity of the safety contract, never its text
+//   rate limits        a client that knows the pace can respect it; hiding
+//                      them only means clients discover them by tripping them
+//   tools              filtered to what THIS caller may run, and names only
+//
+// WHAT IT NEVER CONTAINS: any credential, key prefix, key length, environment
+// variable name or provider endpoint. `configured` stays a boolean and remains
+// the entire extent of what a caller learns about credentials.
+// ---------------------------------------------------------------------------
+$config = aiConfigSummary();
+$rateLimits = aiRateLimits();
+
 http_success([
     'available'  => (bool) $availability['available'],
     // A boolean. Never a key, a fragment of one, or its length.
@@ -68,6 +95,23 @@ http_success([
         'limit'     => $plan['limit'],
         'remaining' => $plan['remaining'],
         'unlimited' => $plan['remaining'] === null,
+    ],
+    'platform' => [
+        'provider' => $config['provider'],
+        'model'    => $config['model'],
+        'prompt'   => [
+            'key'     => DFMS_AI_VET_PROMPT_KEY,
+            'version' => aiPromptVersion(DFMS_AI_VET_PROMPT_KEY),
+        ],
+        'rate_limit' => [
+            'user_per_minute' => $rateLimits['user_per_minute'],
+            'user_per_hour'   => $rateLimits['user_per_hour'],
+            'org_per_minute'  => $rateLimits['org_per_minute'],
+        ],
+        // Names only, filtered to this caller's permissions. Descriptions and
+        // input schemas are for a model, not for an HTTP client — and there is
+        // no endpoint that would run one of these on request.
+        'tools' => array_column(aiToolsAvailable(), 'name'),
     ],
 ], 200, [
     // Restated on every response because a client acting on this endpoint is

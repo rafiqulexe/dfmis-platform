@@ -279,6 +279,31 @@ check_present "ai-conversations returns a data envelope" "$TMP/convs.json" '"dat
 check_absent "ai-conversations does not leak farm_id" "$TMP/convs.json" '"farm_id"'
 check_absent "ai-conversations does not leak admin_id" "$TMP/convs.json" '"admin_id"'
 
+# ---- Phase 5E: the platform block on the SAME endpoint --------------------
+# No new route was added by Phase 5E. These assertions exist to prove both that
+# the infrastructure is reachable and that it did not become a leak.
+check_present "ai-status reports the platform block" "$TMP/status.json" '"platform"'
+check_present "ai-status names the active provider" "$TMP/status.json" '"provider":"anthropic"'
+check_present "ai-status reports the prompt version" "$TMP/status.json" '"veterinarian_assistant"'
+check_present "ai-status publishes the rate limit" "$TMP/status.json" '"user_per_minute"'
+check_present "ai-status lists the tools this caller may use" "$TMP/status.json" '"get_animal"'
+
+# The credential, in every form it could take. `configured` is a boolean and
+# that remains the whole of what any caller learns about it.
+check_absent "ai-status leaks no api key"        "$TMP/status.json" 'sk-'
+check_absent "ai-status leaks no key variable"   "$TMP/status.json" 'ANTHROPIC_API_KEY'
+check_absent "ai-status leaks no auth header"    "$TMP/status.json" 'x-api-key'
+check_absent "ai-status leaks no provider host"  "$TMP/status.json" 'api.anthropic.com'
+check_absent "ai-status leaks no prompt body"    "$TMP/status.json" 'ABSOLUTE RULES'
+
+# There is deliberately NO endpoint that executes a tool by name. A generic
+# remote tool runner would hand a caller the whole read surface behind one
+# allow-list, so none exists — and these prove none was added by accident.
+check_status "no generic tool-execution endpoint exists" \
+    "$(curl -s -b "$ADMIN" -o /dev/null -w '%{http_code}' "$API/v1/ai-tools")" "404"
+check_status "a tool cannot be invoked over HTTP" \
+    "$(curl -s -b "$ADMIN" -o /dev/null -w '%{http_code}' -X POST "$API/v1/ai-tools/get_animal")" "404"
+
 check_status "API rejects a write method on ai-status" \
     "$(curl -s -b "$ADMIN" -o /dev/null -w '%{http_code}' -X POST "$API/v1/ai-status")" "405"
 check_status "API rejects a write method on ai-conversations" \
