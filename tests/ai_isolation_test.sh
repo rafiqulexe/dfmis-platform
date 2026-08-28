@@ -88,15 +88,45 @@ check_status "modules/ai/_shared.php refuses direct execution" \
 section "Degraded state — no API key configured"
 # ============================================================================
 curl -s -b "$ADMIN" -o "$TMP/ai.html" "$BASE/modules/ai/"
-check_present "the unavailable state is shown" "$TMP/ai.html" "assistant is unavailable"
-check_present "the reason is explained safely" "$TMP/ai.html" "not configured"
+curl -s -b "$ADMIN" -o "$TMP/avail.json" "$API/v1/ai-status"
 
-# The ask form must NOT be offered when the assistant cannot answer — a form
-# that posts into a void is worse than an honest empty state.
-if grep -q 'name="question"' "$TMP/ai.html"; then
-    bad "no ask form when unavailable" "the question form was rendered anyway"
+# WHICH state this installation is in is a deployment fact, not a test
+# expectation. run_all.sh starts the isolated server with empty provider keys
+# so CI always exercises the degraded path — but a developer running this
+# against their own configured server must also get a meaningful result rather
+# than six failures telling them their working key is a bug.
+#
+# So the suite asserts the behaviour CORRECT FOR THE OBSERVED STATE, and each
+# branch is a real assertion. Nothing here is softened: the credential checks
+# below run unconditionally either way.
+if grep -q '"configured":false' "$TMP/avail.json"; then
+    ok "assistant reports itself unconfigured — testing the degraded path"
+
+    check_present "the unavailable state is shown" "$TMP/ai.html" "assistant is unavailable"
+    check_present "the reason is explained safely" "$TMP/ai.html" "not configured"
+
+    # The ask form must NOT be offered when the assistant cannot answer — a
+    # form that posts into a void is worse than an honest empty state.
+    if grep -q 'name="question"' "$TMP/ai.html"; then
+        bad "no ask form when unavailable" "the question form was rendered anyway"
+    else
+        ok "no ask form is offered while the assistant is unavailable"
+    fi
 else
-    ok "no ask form is offered while the assistant is unavailable"
+    ok "assistant reports itself configured — testing the available path"
+
+    # The mirror image: when it CAN answer, it must offer the form and must
+    # not be claiming to be unavailable at the same time.
+    if grep -q 'name="question"' "$TMP/ai.html"; then
+        ok "the ask form is offered while the assistant is available"
+    else
+        bad "ask form when available" "the question form was not rendered"
+    fi
+    check_absent "no stale unavailable banner" "$TMP/ai.html" "assistant is unavailable"
+
+    # The safety framing is not conditional on availability.
+    check_present "the decision-support notice is still shown" "$TMP/ai.html" \
+        "does not replace a veterinarian"
 fi
 
 # And absolutely no fabricated answer anywhere on the page.
@@ -114,7 +144,15 @@ for URL in "modules/ai/" "modules/ai/knowledge.php" "api/index.php/v1/ai-status"
     curl -s -b "$ADMIN" -o "$TMP/leak.txt" "$BASE/$URL"
     LEAKED=""
     # EVERY provider's credential shape, not just the one configured today.
-    for TERM in "sk-" "ANTHROPIC_API_KEY" "x-api-key" "api.anthropic.com" \
+    #
+    # 'sk-' was here and had to go: it matches "ask-", which appears in the
+    # assistant's own markup (id="ai-ask-form"). It only ever passed because
+    # the form is not rendered while the assistant is unavailable, so the day
+    # someone configured a key the credential scanner started crying wolf on
+    # ordinary HTML. A scanner with false positives is a scanner people learn
+    # to ignore, so these are now the REAL key prefixes, which cannot occur in
+    # English or in a CSS class.
+    for TERM in "sk-ant-" "ANTHROPIC_API_KEY" "x-api-key" "api.anthropic.com" \
                 "GEMINI_API_KEY" "x-goog-api-key" "AIzaSy" "generativelanguage.googleapis.com"; do
         if grep -qi -- "$TERM" "$TMP/leak.txt"; then
             LEAKED="$LEAKED $TERM"
@@ -271,7 +309,15 @@ section "API shape and safety metadata"
 curl -s -b "$ADMIN" -o "$TMP/status.json" "$API/v1/ai-status"
 check_present "ai-status returns a data envelope" "$TMP/status.json" '"data"'
 check_present "ai-status reports availability" "$TMP/status.json" '"available"'
-check_present "ai-status reports configured as a boolean" "$TMP/status.json" '"configured":false'
+# A BOOLEAN — either value. WHICH value is a deployment fact; the rule being
+# asserted is that `configured` is the only thing a caller ever learns about
+# credentials, and that it is a bare true/false rather than a key, a prefix or
+# a length.
+if grep -qE '"configured":(true|false)' "$TMP/status.json"; then
+    ok "ai-status reports configured as a boolean"
+else
+    bad "ai-status reports configured as a boolean" "expected a bare true/false"
+fi
 check_present "ai-status states the assistant is decision support only" "$TMP/status.json" 'decision_support_only'
 check_present "ai-status states it does not replace a veterinarian" "$TMP/status.json" 'replace a licensed veterinarian'
 check_absent "ai-status does not leak farm_id" "$TMP/status.json" '"farm_id"'
@@ -285,7 +331,15 @@ check_absent "ai-conversations does not leak admin_id" "$TMP/convs.json" '"admin
 # No new route was added by Phase 5E. These assertions exist to prove both that
 # the infrastructure is reachable and that it did not become a leak.
 check_present "ai-status reports the platform block" "$TMP/status.json" '"platform"'
-check_present "ai-status names the active provider" "$TMP/status.json" '"provider":"anthropic"'
+# The provider named must be one this codebase actually implements. Pinning a
+# specific vendor would assert a deployment preference rather than a property
+# of the system, and would fail on any install that legitimately chose the
+# other one.
+if grep -qE '"provider":"(anthropic|gemini)"' "$TMP/status.json"; then
+    ok "ai-status names an implemented provider"
+else
+    bad "ai-status names an implemented provider" "unknown or missing provider"
+fi
 check_present "ai-status reports the prompt version" "$TMP/status.json" '"veterinarian_assistant"'
 check_present "ai-status publishes the rate limit" "$TMP/status.json" '"user_per_minute"'
 check_present "ai-status lists the tools this caller may use" "$TMP/status.json" '"get_animal"'

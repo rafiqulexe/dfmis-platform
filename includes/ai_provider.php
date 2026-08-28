@@ -655,7 +655,7 @@ final class DfmsGeminiProvider implements DfmsAiProvider
     private string $model;
     private int $timeoutSeconds;
 
-    public function __construct(string $model = 'gemini-2.5-flash', int $timeoutSeconds = 60)
+    public function __construct(string $model = 'gemini-3.6-flash', int $timeoutSeconds = 60)
     {
         $this->model = $model;
         $this->timeoutSeconds = $timeoutSeconds;

@@ -152,7 +152,14 @@ if curl -s -o /dev/null --max-time 3 "$ANIMAL_URL/index.php" 2>/dev/null; then
     echo "  Reusing the test server already running on :$ANIMAL_PORT"
 else
     echo "  Starting an isolated test server on :$ANIMAL_PORT (DB_NAME=dfms_test)"
-    DB_NAME=dfms_test "$PHP" -S "localhost:$ANIMAL_PORT" -t "$ROOT" > /tmp/dfms-animal-server.log 2>&1 &
+    # Provider credentials are pinned EMPTY on the isolated server, so the AI
+    # suite always exercises the degraded "not configured" path and never makes
+    # a real, billable call with a developer's key. config/database.php only
+    # reads .env for variables the environment has not already set, and an
+    # empty string counts as set — so this wins over a configured .env without
+    # touching it.
+    DB_NAME=dfms_test ANTHROPIC_API_KEY= GEMINI_API_KEY= \
+        "$PHP" -S "localhost:$ANIMAL_PORT" -t "$ROOT" > /tmp/dfms-animal-server.log 2>&1 &
     ANIMAL_SERVER_PID=$!
 
     for _ in $(seq 1 30); do

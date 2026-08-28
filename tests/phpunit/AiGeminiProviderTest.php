@@ -185,11 +185,11 @@ final class AiGeminiProviderTest extends TestCase
     public function testTheFactoryBuildsTheConfiguredProviderAndOnlyThat(): void
     {
         $gemini = dfms_ai_build_provider(
-            ['provider' => 'gemini', 'model' => 'gemini-2.5-flash', 'timeout_seconds' => 30]
+            ['provider' => 'gemini', 'model' => 'gemini-3.6-flash', 'timeout_seconds' => 30]
         );
         self::assertInstanceOf(DfmsGeminiProvider::class, $gemini);
         self::assertSame('gemini', $gemini->name());
-        self::assertSame('gemini-2.5-flash', $gemini->defaultModel());
+        self::assertSame('gemini-3.6-flash', $gemini->defaultModel());
 
         $anthropic = dfms_ai_build_provider(
             ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'timeout_seconds' => 30]
@@ -209,7 +209,7 @@ final class AiGeminiProviderTest extends TestCase
     public function testAnUnconfiguredProviderDegradesRatherThanFallingBack(): void
     {
         $gemini = dfms_ai_build_provider(
-            ['provider' => 'gemini', 'model' => 'gemini-2.5-flash', 'timeout_seconds' => 30]
+            ['provider' => 'gemini', 'model' => 'gemini-3.6-flash', 'timeout_seconds' => 30]
         );
 
         // The test environment has no GEMINI_API_KEY, which is the condition
@@ -634,13 +634,13 @@ final class AiGeminiProviderTest extends TestCase
             public int $calls = 0;
             public function name(): string { return 'gemini'; }
             public function isConfigured(): bool { return true; }
-            public function defaultModel(): string { return 'gemini-2.5-flash'; }
+            public function defaultModel(): string { return 'gemini-3.6-flash'; }
             public function complete(string $systemPrompt, array $messages, array $options = []): array
             {
                 $this->calls++;
                 return ['ok' => false, 'text' => null,
                     'reason' => DfmsGeminiProvider::classifyHttpStatus(503),
-                    'model' => 'gemini-2.5-flash', 'input_tokens' => 0, 'output_tokens' => 0];
+                    'model' => 'gemini-3.6-flash', 'input_tokens' => 0, 'output_tokens' => 0];
             }
         };
 
@@ -655,13 +655,13 @@ final class AiGeminiProviderTest extends TestCase
             public int $calls = 0;
             public function name(): string { return 'gemini'; }
             public function isConfigured(): bool { return true; }
-            public function defaultModel(): string { return 'gemini-2.5-flash'; }
+            public function defaultModel(): string { return 'gemini-3.6-flash'; }
             public function complete(string $systemPrompt, array $messages, array $options = []): array
             {
                 $this->calls++;
                 return ['ok' => false, 'text' => null,
                     'reason' => DfmsGeminiProvider::classifyHttpStatus(401),
-                    'model' => 'gemini-2.5-flash', 'input_tokens' => 0, 'output_tokens' => 0];
+                    'model' => 'gemini-3.6-flash', 'input_tokens' => 0, 'output_tokens' => 0];
             }
         };
         aiCallWithPolicy($auth, 'sys', [['role' => 'user', 'content' => 'q']], [],
@@ -711,11 +711,11 @@ final class AiGeminiProviderTest extends TestCase
         $stub = new class implements DfmsAiProvider {
             public function name(): string { return 'gemini'; }
             public function isConfigured(): bool { return true; }
-            public function defaultModel(): string { return 'gemini-2.5-flash'; }
+            public function defaultModel(): string { return 'gemini-3.6-flash'; }
             public function complete(string $systemPrompt, array $messages, array $options = []): array
             {
                 return ['ok' => true, 'text' => 'An answer.', 'reason' => null,
-                    'model' => 'gemini-2.5-flash', 'input_tokens' => 3, 'output_tokens' => 5];
+                    'model' => 'gemini-3.6-flash', 'input_tokens' => 3, 'output_tokens' => 5];
             }
         };
         dfms_ai_set_provider($stub);
@@ -755,11 +755,11 @@ final class AiGeminiProviderTest extends TestCase
         $stub = new class implements DfmsAiProvider {
             public function name(): string { return 'gemini'; }
             public function isConfigured(): bool { return true; }
-            public function defaultModel(): string { return 'gemini-2.5-flash'; }
+            public function defaultModel(): string { return 'gemini-3.6-flash'; }
             public function complete(string $systemPrompt, array $messages, array $options = []): array
             {
                 return ['ok' => true, 'text' => 'An answer.', 'reason' => null,
-                    'model' => 'gemini-2.5-flash', 'input_tokens' => 11, 'output_tokens' => 7];
+                    'model' => 'gemini-3.6-flash', 'input_tokens' => 11, 'output_tokens' => 7];
             }
         };
         dfms_ai_set_provider($stub);
@@ -797,10 +797,10 @@ final class AiGeminiProviderTest extends TestCase
         $stub = new class implements DfmsAiProvider {
             public function name(): string { return 'gemini'; }
             public function isConfigured(): bool { return true; }
-            public function defaultModel(): string { return 'gemini-2.5-flash'; }
+            public function defaultModel(): string { return 'gemini-3.6-flash'; }
             public function complete(string $systemPrompt, array $messages, array $options = []): array
             {
-                return ['ok' => true, 'reason' => null, 'model' => 'gemini-2.5-flash',
+                return ['ok' => true, 'reason' => null, 'model' => 'gemini-3.6-flash',
                     'input_tokens' => 1, 'output_tokens' => 1,
                     'text' => 'The records show this animal is healthy, so there is no emergency.'];
             }

@@ -71,10 +71,26 @@ const DFMS_AI_PROVIDERS = ['anthropic', 'gemini'];
  *
  * These are starting points, not a supported-model list. Any model the
  * deployment's key can reach may be pinned with AI_MODEL.
+ *
+ * A DEFAULT MODEL NAME GOES STALE, and it fails in a confusing way. Live
+ * activation of the Gemini provider hit exactly this: 'gemini-2.5-flash' was
+ * still listed by the vendor's own ListModels endpoint, but generateContent
+ * answered
+ *
+ *   404 NOT_FOUND: This model is no longer available to new users.
+ *
+ * A vendor can retire a model for NEW keys while keeping it for existing ones,
+ * so "it works on my key" is not evidence the default is current. When an
+ * operator reports a 404 on an untouched installation, the model name is the
+ * first thing to check — and AI_MODEL is the fix, with no code change.
+ *
+ * Pinned rather than an alias like 'gemini-flash-latest' on purpose: ai_usage
+ * records the exact model behind every answer so a clinical reply stays
+ * traceable, and a floating alias would silently change what that column means.
  */
 const DFMS_AI_PROVIDER_DEFAULT_MODELS = [
     'anthropic' => 'claude-sonnet-5',
-    'gemini'    => 'gemini-2.5-flash',
+    'gemini'    => 'gemini-3.6-flash',
 ];
 
 /**

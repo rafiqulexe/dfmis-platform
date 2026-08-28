@@ -47,5 +47,19 @@
         <env name="DFMS_ENV" value="testing"/>
         <env name="DB_NAME" value="dfms_test"/>
         <env name="APP_ENV" value="testing"/>
+
+        <!-- Provider credentials are pinned EMPTY so the unit suite never
+             depends on whether the developer running it happens to have a key
+             in their .env. Without this, "an unconfigured provider degrades"
+             passes on a machine with no key and fails on the machine of the
+             person who just configured one — which is precisely backwards.
+
+             These win over .env: config/database.php only reads the file for
+             variables the environment has not already set, and an empty string
+             is set. No real AI call is possible from the unit suite either
+             way; every provider in it is a stub. -->
+        <env name="AI_PROVIDER" value="anthropic"/>
+        <env name="ANTHROPIC_API_KEY" value=""/>
+        <env name="GEMINI_API_KEY" value=""/>
     </php>
 </phpunit>
