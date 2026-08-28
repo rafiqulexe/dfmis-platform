@@ -604,6 +604,588 @@ final class DfmsAnthropicProvider implements DfmsAiProvider
 }
 
 // ===========================================================================
+// GOOGLE GEMINI
+//
+// A second implementation of DfmsAiProvider. It adds NO new infrastructure:
+// the gateway, retry policy, timeout, rate limiting, usage accounting, prompt
+// registry, structured-output validation, agent loop and veterinary safety
+// layer are all untouched and all apply to it exactly as they do to Anthropic.
+//
+// The SAME credential rules stated at the top of this file are enforced here:
+// the key is read from the environment through one constant, in one method; no
+// method returns it; nothing is logged but a machine token and an HTTP status;
+// no exception carries request context; isConfigured() answers a boolean.
+//
+// One extra rule this vendor makes necessary: Google's API also accepts the key
+// as a `?key=` QUERY PARAMETER. This provider does NOT use that form. A key in
+// a URL ends up in proxy logs, browser history and error strings that quote the
+// request line — the header is the only place it goes.
+//
+// ---------------------------------------------------------------------------
+// THE THREE REAL DIFFERENCES FROM ANTHROPIC, AND HOW THEY ARE ABSORBED
+//
+//   1. ROLE NAME.        Gemini calls the assistant 'model'. Mapped in
+//                        toWireMessages(); the internal vocabulary keeps
+//                        'assistant' and nothing above this class changes.
+//
+//   2. SYSTEM PROMPT.    Not a message — a separate `system_instruction`
+//                        field. The safety contract therefore cannot be
+//                        confused with conversation content, which if
+//                        anything is safer than the Anthropic shape.
+//
+//   3. NO TOOL CALL ID.  THE ONE THAT NEEDED THOUGHT. Anthropic gives every
+//                        tool_use an `id` and expects it back on the result.
+//                        Gemini correlates a functionResponse to its
+//                        functionCall BY NAME and supplies no id at all. Our
+//                        internal vocabulary requires an id, and
+//                        includes/ai_agent.php refuses a request without one
+//                        and drops duplicates by it.
+//
+//                        So this provider SYNTHESISES ids, and encodes the
+//                        function name inside them (see toolCallId() /
+//                        toolNameFromId()). Going back out to the wire, the
+//                        name is recovered two ways: from the transcript,
+//                        which is authoritative, and from the id itself as a
+//                        fallback. Inventing an opaque id and losing the name
+//                        would make the tool_result unserialisable.
+// ===========================================================================
+
+final class DfmsGeminiProvider implements DfmsAiProvider
+{
+    private string $model;
+    private int $timeoutSeconds;
+
+    public function __construct(string $model = 'gemini-2.5-flash', int $timeoutSeconds = 60)
+    {
+        $this->model = $model;
+        $this->timeoutSeconds = $timeoutSeconds;
+    }
+
+    public function name(): string
+    {
+        return 'gemini';
+    }
+
+    /**
+     * Credentials are read here and nowhere else in the class, so there is
+     * exactly one expression in this file that evaluates to the Gemini key.
+     */
+    private function apiKey(): string
+    {
+        return defined('GEMINI_API_KEY') ? (string) GEMINI_API_KEY : '';
+    }
+
+    public function isConfigured(): bool
+    {
+        return $this->apiKey() !== '';
+    }
+
+    public function defaultModel(): string
+    {
+        return $this->model;
+    }
+
+    public function complete(string $systemPrompt, array $messages, array $options = []): array
+    {
+        $model = (string) ($options['model'] ?? $this->model);
+        $fail = static function (string $reason) use ($model): array {
+            return [
+                'ok' => false, 'text' => null, 'reason' => $reason,
+                'model' => $model, 'input_tokens' => 0, 'output_tokens' => 0,
+            ];
+        };
+
+        if (!$this->isConfigured()) {
+            return $fail('not_configured');
+        }
+
+        $contents = self::toWireMessages($messages);
+        if ($contents === []) {
+            return $fail('empty_prompt');
+        }
+
+        $payload = ['contents' => $contents];
+
+        // The safety contract travels in its own field rather than as a turn.
+        if (trim($systemPrompt) !== '') {
+            $payload['system_instruction'] = ['parts' => [['text' => $systemPrompt]]];
+        }
+
+        $generationConfig = ['maxOutputTokens' => (int) ($options['max_tokens'] ?? 1024)];
+        if (isset($options['temperature'])) {
+            $generationConfig['temperature'] = (float) $options['temperature'];
+        }
+        $payload['generationConfig'] = $generationConfig;
+
+        $tools = $options['tools'] ?? [];
+        if (is_array($tools) && $tools !== []) {
+            $payload['tools'] = [['functionDeclarations' => self::wireToolDeclarations($tools)]];
+        }
+
+        $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        if ($body === false) {
+            return $fail('empty_prompt');
+        }
+
+        // The model name is part of the PATH. It is validated against
+        // DFMS_AI_MODEL_PATTERN by includes/ai_config.php before it can reach
+        // here, and urlencoded regardless — a model identifier is not a place
+        // to discover a path-traversal.
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+            . rawurlencode($model) . ':generateContent';
+
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return $fail('transport_error');
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => $this->timeoutSeconds,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_HTTPHEADER     => [
+                'content-type: application/json',
+                // Header, never ?key= in the URL. See the class header.
+                'x-goog-api-key: ' . $this->apiKey(),
+            ],
+            CURLOPT_POSTFIELDS => $body,
+        ]);
+
+        $raw = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $transportError = curl_errno($ch) !== 0;
+        curl_close($ch);
+
+        if ($raw === false || $transportError) {
+            // Deliberately does NOT log curl_error(): it can contain the
+            // request URL and, on some builds, header context.
+            error_log('[' . dfms_ai_request_ref() . '] ai provider gemini: transport failure');
+            return $fail('transport_error');
+        }
+
+        if ($httpCode !== 200) {
+            // Status code only. The upstream body is NEVER logged — Google's
+            // error envelope quotes request detail, and a key sent in the
+            // wrong header would otherwise be echoed straight into our log.
+            error_log('[' . dfms_ai_request_ref() . "] ai provider gemini: HTTP $httpCode");
+            return $fail(self::classifyHttpStatus($httpCode));
+        }
+
+        $decoded = json_decode((string) $raw, true);
+        if (!is_array($decoded)) {
+            return $fail('empty_response');
+        }
+
+        $parsed = self::readResponse($decoded);
+        $text = $parsed['text'];
+
+        // A turn carrying tool requests and no prose is a valid response — it
+        // is the normal shape of "I need to look something up".
+        if (($text === null || trim($text) === '') && $parsed['tool_requests'] === []) {
+            return $fail('empty_response');
+        }
+
+        return [
+            'ok'            => true,
+            'text'          => $text,
+            'reason'        => null,
+            'model'         => $model,
+            'input_tokens'  => (int) ($decoded['usageMetadata']['promptTokenCount'] ?? 0),
+            'output_tokens' => (int) ($decoded['usageMetadata']['candidatesTokenCount'] ?? 0),
+            'stop_reason'   => $parsed['stop_reason'],
+            'tool_requests' => $parsed['tool_requests'],
+            'blocks'        => $parsed['blocks'],
+        ];
+    }
+
+    /**
+     * Map an HTTP status onto the existing closed set of reason tokens.
+     *
+     * The mapping is deliberately IDENTICAL to the Anthropic provider's, so
+     * the retry policy in includes/ai_config.php behaves the same whichever
+     * vendor is configured: 401/403 is a credential problem and is never
+     * retried, 4xx is our malformed request and is never retried, 429 and 5xx
+     * are transient and are.
+     */
+    public static function classifyHttpStatus(int $httpCode): string
+    {
+        if ($httpCode === 429) {
+            return 'rate_limited';
+        }
+        if ($httpCode === 401 || $httpCode === 403) {
+            return 'not_configured';
+        }
+        return $httpCode >= 400 && $httpCode < 500 ? 'invalid_request' : 'upstream_error';
+    }
+
+    /**
+     * Translate a Gemini response envelope into the internal vocabulary.
+     *
+     * PUBLIC AND STATIC for the same reason the Anthropic equivalent is: this
+     * is the half of the vendor mapping that reads a structure we do not
+     * control, and a mapping only reachable through a live authenticated HTTP
+     * call is one the suite never exercises.
+     *
+     * @param array<string, mixed> $decoded
+     * @return array{text: ?string, blocks: list<array<string, mixed>>,
+     *               tool_requests: list<array{id: string, name: string, input: array<string, mixed>}>,
+     *               stop_reason: string}
+     */
+    public static function readResponse(array $decoded): array
+    {
+        $text = null;
+        $blocks = [];
+        $toolRequests = [];
+
+        $candidates = $decoded['candidates'] ?? [];
+        $candidate = is_array($candidates) && isset($candidates[0]) && is_array($candidates[0])
+            ? $candidates[0] : [];
+
+        $parts = $candidate['content']['parts'] ?? [];
+        if (!is_array($parts)) {
+            $parts = [];
+        }
+
+        $callIndex = 0;
+        foreach ($parts as $part) {
+            if (!is_array($part)) {
+                continue;
+            }
+
+            if (isset($part['text']) && is_string($part['text'])) {
+                $text = ($text ?? '') . $part['text'];
+                $blocks[] = ['type' => DFMS_AI_BLOCK_TEXT, 'text' => $part['text']];
+                continue;
+            }
+
+            if (isset($part['functionCall']) && is_array($part['functionCall'])) {
+                $call = $part['functionCall'];
+                $name = isset($call['name']) && is_string($call['name']) ? $call['name'] : '';
+                if ($name === '') {
+                    // Dropped, not guessed at — a nameless call cannot be
+                    // routed, and inventing one would put a fabricated tool
+                    // request into the orchestration.
+                    error_log('[' . dfms_ai_request_ref()
+                        . '] ai provider gemini: discarded a malformed functionCall');
+                    continue;
+                }
+                // Arguments are carried through UNVALIDATED and untrusted;
+                // includes/ai_tools.php validates them against the tool's own
+                // schema before any domain function is reached.
+                $args = isset($call['args']) && is_array($call['args']) ? $call['args'] : [];
+
+                // Gemini supplies no id. One is synthesised with the function
+                // name encoded in it, so the matching functionResponse can be
+                // built later even without the transcript.
+                $id = self::toolCallId($callIndex, $name);
+                $callIndex++;
+
+                $toolRequests[] = ['id' => $id, 'name' => $name, 'input' => $args];
+                $blocks[] = [
+                    'type'  => DFMS_AI_BLOCK_TOOL_USE,
+                    'id'    => $id,
+                    'name'  => $name,
+                    'input' => $args,
+                ];
+            }
+            // Any other part type is ignored. This provider asks for none.
+        }
+
+        return [
+            'text'          => $text,
+            'blocks'        => $blocks,
+            'tool_requests' => $toolRequests,
+            'stop_reason'   => self::normaliseFinishReason(
+                $candidate['finishReason'] ?? null,
+                $toolRequests !== []
+            ),
+        ];
+    }
+
+    /**
+     * Map Gemini's finishReason onto DFMS_AI_STOP_REASONS.
+     *
+     * The blocked-content reasons (SAFETY, RECITATION, PROHIBITED_CONTENT…)
+     * become 'other' and, because such a candidate carries no parts, the call
+     * surfaces as 'empty_response' — which is NOT retried. That is the correct
+     * outcome: the vendor made a content decision, and sending the identical
+     * request again would get the identical decision.
+     */
+    private static function normaliseFinishReason($raw, bool $hasToolCalls): string
+    {
+        if ($hasToolCalls) {
+            return 'tool_use';
+        }
+        if (!is_string($raw)) {
+            return 'other';
+        }
+        switch (strtoupper($raw)) {
+            case 'STOP':
+                return 'end_turn';
+            case 'MAX_TOKENS':
+                return 'max_tokens';
+            default:
+                return 'other';
+        }
+    }
+
+    // ---- tool call identity ------------------------------------------------
+
+    /**
+     * Build an id that carries its own function name.
+     *
+     * The prefix makes a synthesised id recognisable, and the trailing name is
+     * what lets toWireMessages() build a functionResponse for a tool_result it
+     * receives without the surrounding transcript.
+     */
+    public static function toolCallId(int $index, string $name): string
+    {
+        return 'gcall_' . $index . '_' . $name;
+    }
+
+    /** Recover the function name from a synthesised id, or null. */
+    public static function toolNameFromId(string $id): ?string
+    {
+        if (preg_match('/^gcall_\d+_(.+)$/', $id, $matches) !== 1) {
+            return null;
+        }
+        return $matches[1];
+    }
+
+    // ---- outbound mapping --------------------------------------------------
+
+    /**
+     * Translate internal messages into Gemini's `contents` array.
+     *
+     * PUBLIC AND STATIC, testable directly — a mis-serialised tool exchange is
+     * rejected with a 400, which this codebase maps to 'invalid_request' and
+     * deliberately does not retry, so without a direct test the first sign of
+     * a mistake would be an assistant that stops working the moment a tool is
+     * involved.
+     *
+     * @param list<array{role: string, content: string|list<array<string, mixed>>}> $messages
+     * @return list<array<string, mixed>>
+     */
+    public static function toWireMessages(array $messages): array
+    {
+        // The transcript is the AUTHORITATIVE source for which id belongs to
+        // which function: an assistant tool_use always precedes the tool_result
+        // that answers it. The id encoding is only the fallback.
+        $nameById = [];
+        foreach ($messages as $message) {
+            $content = $message['content'] ?? '';
+            if (!is_array($content)) {
+                continue;
+            }
+            foreach ($content as $block) {
+                if (is_array($block)
+                    && ($block['type'] ?? '') === DFMS_AI_BLOCK_TOOL_USE
+                    && isset($block['id'], $block['name'])) {
+                    $nameById[(string) $block['id']] = (string) $block['name'];
+                }
+            }
+        }
+
+        $wire = [];
+        foreach ($messages as $message) {
+            // Gemini names the assistant 'model'.
+            $role = ($message['role'] ?? '') === 'assistant' ? 'model' : 'user';
+            $raw = $message['content'] ?? '';
+
+            $parts = is_array($raw)
+                ? self::wireParts($raw, $nameById)
+                : self::wireParts([['type' => DFMS_AI_BLOCK_TEXT, 'text' => (string) $raw]], $nameById);
+
+            if ($parts === []) {
+                continue;
+            }
+
+            // Consecutive same-role turns are merged by APPENDING PARTS, never
+            // by string concatenation — a tool call stringified into prose
+            // would be read by the model as something a human said.
+            $last = count($wire) - 1;
+            if ($last >= 0 && $wire[$last]['role'] === $role) {
+                $wire[$last]['parts'] = array_merge($wire[$last]['parts'], $parts);
+                continue;
+            }
+            $wire[] = ['role' => $role, 'parts' => $parts];
+        }
+
+        // The exchange must begin with a user turn.
+        while ($wire !== [] && $wire[0]['role'] !== 'user') {
+            array_shift($wire);
+        }
+        return $wire;
+    }
+
+    /**
+     * Translate internal blocks into Gemini `parts`.
+     *
+     * An unrecognised block is DROPPED rather than passed through: forwarding
+     * something this provider does not understand would mean sending a vendor
+     * a structure nobody here has reasoned about.
+     *
+     * @param array<int|string, mixed> $blocks
+     * @param array<string, string> $nameById
+     * @return list<array<string, mixed>>
+     */
+    private static function wireParts(array $blocks, array $nameById): array
+    {
+        $parts = [];
+        foreach ($blocks as $block) {
+            if (!is_array($block)) {
+                continue;
+            }
+            switch ((string) ($block['type'] ?? '')) {
+                case DFMS_AI_BLOCK_TEXT:
+                    $text = trim((string) ($block['text'] ?? ''));
+                    if ($text !== '') {
+                        $parts[] = ['text' => $text];
+                    }
+                    break;
+
+                case DFMS_AI_BLOCK_TOOL_USE:
+                    $parts[] = ['functionCall' => [
+                        'name' => (string) ($block['name'] ?? ''),
+                        // An empty argument set must serialise as {} and not as
+                        // [], which is what json_encode does with an empty PHP
+                        // array — and the vendor rejects a list here.
+                        'args' => (object) (is_array($block['input'] ?? null) ? $block['input'] : []),
+                    ]];
+                    break;
+
+                case DFMS_AI_BLOCK_TOOL_RESULT:
+                    $id = (string) ($block['tool_use_id'] ?? '');
+                    // Transcript first, encoded id second.
+                    $name = $nameById[$id] ?? self::toolNameFromId($id);
+                    if ($name === null || $name === '') {
+                        // Unanswerable: a functionResponse must name the
+                        // function it answers, and guessing would attribute a
+                        // result to the wrong tool.
+                        error_log('[' . dfms_ai_request_ref()
+                            . '] ai provider gemini: dropped a tool_result with no resolvable function name');
+                        break;
+                    }
+                    $parts[] = ['functionResponse' => [
+                        'name'     => $name,
+                        'response' => self::wireToolResponse((string) ($block['content'] ?? ''),
+                            !empty($block['is_error'])),
+                    ]];
+                    break;
+            }
+        }
+        return $parts;
+    }
+
+    /**
+     * A functionResponse payload must be an OBJECT.
+     *
+     * includes/ai_agent.php hands us a JSON string, already sanitised and size
+     * bounded. A JSON object is passed through as-is; anything else — a scalar,
+     * a list, or text that never parsed — is wrapped, so the vendor always
+     * receives the shape it requires and no result is silently dropped for
+     * being the wrong type.
+     *
+     * @return array<string, mixed>
+     */
+    private static function wireToolResponse(string $content, bool $isError): array
+    {
+        $decoded = json_decode($content, true);
+        if (is_array($decoded) && !array_is_list($decoded)) {
+            $response = $decoded;
+        } elseif (is_array($decoded)) {
+            $response = ['result' => $decoded];
+        } else {
+            $response = ['result' => $content];
+        }
+        if ($isError) {
+            // Gemini has no is_error flag on a functionResponse, so the fact
+            // is stated inside the payload. The model must be TOLD a lookup
+            // failed — a silently empty result reads as "there is nothing
+            // there", which is how a refusal becomes a false statement.
+            $response['error'] = true;
+        }
+        return $response;
+    }
+
+    /**
+     * Translate our tool definitions into Gemini functionDeclarations.
+     *
+     * @param list<array{name: string, description: string, input_schema: array<string, mixed>}> $tools
+     * @return list<array<string, mixed>>
+     */
+    private static function wireToolDeclarations(array $tools): array
+    {
+        $declarations = [];
+        foreach ($tools as $tool) {
+            $declaration = [
+                'name'        => (string) $tool['name'],
+                'description' => (string) $tool['description'],
+            ];
+            $parameters = self::wireSchema(is_array($tool['input_schema'] ?? null)
+                ? $tool['input_schema'] : []);
+            // A tool that takes nothing OMITS parameters entirely. Sending an
+            // object with empty properties is rejected by this vendor.
+            if (($parameters['properties'] ?? []) !== []) {
+                $declaration['parameters'] = $parameters;
+            }
+            $declarations[] = $declaration;
+        }
+        return $declarations;
+    }
+
+    /**
+     * Convert JSON Schema into Gemini's OpenAPI-subset Schema.
+     *
+     * DELIBERATELY CONSERVATIVE. Only the keywords this vendor documents are
+     * emitted; `additionalProperties`, `maxLength`, `minimum` and `maximum`
+     * are DROPPED because they are not part of its Schema type and an
+     * unrecognised keyword risks a 400 on every tool-enabled request.
+     *
+     * Nothing is lost that matters. The provider schema is a HINT that helps a
+     * well-behaved model produce well-formed arguments; the authority is
+     * AiTool::execute(), which re-validates every argument against the
+     * INTERNAL schema — bounds, unknown keys and all — on a name the model
+     * chose. A weaker hint cannot weaken that.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    public static function wireSchema(array $schema): array
+    {
+        $type = strtoupper((string) ($schema['type'] ?? 'string'));
+        $wire = ['type' => $type];
+
+        if (isset($schema['description']) && is_string($schema['description'])) {
+            $wire['description'] = $schema['description'];
+        }
+        if (isset($schema['enum']) && is_array($schema['enum'])) {
+            $wire['enum'] = array_values(array_map('strval', $schema['enum']));
+        }
+
+        if ($type === 'OBJECT') {
+            $properties = [];
+            foreach (($schema['properties'] ?? []) as $name => $property) {
+                if (is_array($property)) {
+                    $properties[(string) $name] = self::wireSchema($property);
+                }
+            }
+            $wire['properties'] = $properties;
+            if (isset($schema['required']) && is_array($schema['required']) && $schema['required'] !== []) {
+                $wire['required'] = array_values(array_map('strval', $schema['required']));
+            }
+        }
+
+        if ($type === 'ARRAY') {
+            $items = $schema['items'] ?? null;
+            $wire['items'] = is_array($items) ? self::wireSchema($items) : ['type' => 'STRING'];
+        }
+
+        return $wire;
+    }
+}
+
+// ===========================================================================
 // RESOLUTION
 // ===========================================================================
 
@@ -623,17 +1205,54 @@ function dfms_ai_provider(): DfmsAiProvider {
     }
     static $provider = null;
     if ($provider === null) {
-        // Phase 5E: the model and the socket timeout now come from the
-        // validated configuration layer rather than from a raw getenv() here.
-        // A malformed AI_MODEL used to reach this constructor unchecked; it is
-        // now discarded with a log line and the default is used instead.
-        $config = aiRequestConfig();
-        $provider = new DfmsAnthropicProvider(
-            $config['model'],
-            $config['timeout_seconds']
-        );
+        // Phase 5E: the model and the socket timeout come from the validated
+        // configuration layer rather than from a raw getenv() here. A malformed
+        // AI_MODEL used to reach this constructor unchecked; it is now
+        // discarded with a log line and the default is used instead.
+        $provider = dfms_ai_build_provider(aiRequestConfig());
     }
     return $provider;
+}
+
+/**
+ * Construct the provider a configuration names.
+ *
+ * EXACTLY ONE IS BUILT. There is no fallback chain and no "try the other one":
+ * a deployment that names gemini and has no GEMINI_API_KEY gets a Gemini
+ * provider that reports isConfigured() === false, and the assistant degrades
+ * with the existing 'not_configured' behaviour. Silently answering from a
+ * different vendor than the one configured would be the worst possible
+ * response — the operator would believe they were talking to the model they
+ * chose, and the usage row would say so too.
+ *
+ * Separate from dfms_ai_provider() because that one CACHES. This is the pure
+ * factory, so a test can exercise selection without a process-wide static.
+ *
+ * @param array{provider: string, model: string, timeout_seconds: int} $config
+ */
+function dfms_ai_build_provider(array $config): DfmsAiProvider {
+    $model = (string) $config['model'];
+    $timeout = (int) $config['timeout_seconds'];
+
+    switch ((string) $config['provider']) {
+        case 'gemini':
+            return new DfmsGeminiProvider($model, $timeout);
+
+        case 'anthropic':
+            return new DfmsAnthropicProvider($model, $timeout);
+
+        default:
+            // Unreachable through aiRequestConfig(), which validates
+            // `provider` against DFMS_AI_PROVIDERS and refuses anything else.
+            // Kept because a switch that can fall through should say what it
+            // means rather than returning null by omission — and the safe
+            // meaning is the provider this installation has always used.
+            error_log('AI provider: unknown provider in configuration — using the default.');
+            return new DfmsAnthropicProvider(
+                DFMS_AI_PROVIDER_DEFAULT_MODELS['anthropic'],
+                $timeout
+            );
+    }
 }
 
 /**

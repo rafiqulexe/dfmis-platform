@@ -54,7 +54,28 @@ require_once __DIR__ . '/ai_provider.php';
 class AiConfigViolation extends InvalidArgumentException {}
 
 /** Providers that genuinely exist in this codebase. */
-const DFMS_AI_PROVIDERS = ['anthropic'];
+const DFMS_AI_PROVIDERS = ['anthropic', 'gemini'];
+
+/**
+ * The model each provider uses when AI_MODEL is not set.
+ *
+ * WHY THIS EXISTS. Before a second provider there was one global default
+ * (DFMS_AI_CONFIG_DEFAULTS['model'], below) and it was correct because there
+ * was one vendor. With two, a deployment that sets AI_PROVIDER=gemini and
+ * leaves AI_MODEL unset would otherwise send 'claude-sonnet-5' to Google and
+ * get a 400 it could not explain. The default model is a property OF THE
+ * PROVIDER, so it is resolved from the provider.
+ *
+ * The anthropic entry is deliberately identical to the global default, so
+ * nothing about the existing single-provider behaviour changes.
+ *
+ * These are starting points, not a supported-model list. Any model the
+ * deployment's key can reach may be pinned with AI_MODEL.
+ */
+const DFMS_AI_PROVIDER_DEFAULT_MODELS = [
+    'anthropic' => 'claude-sonnet-5',
+    'gemini'    => 'gemini-2.5-flash',
+];
 
 /**
  * Defaults. `temperature` is null meaning "do not send one" — the provider's
@@ -232,7 +253,17 @@ function aiConfigEnvOverrides(bool $reset = false): array {
  * @throws AiConfigViolation on an out-of-bounds caller override
  */
 function aiRequestConfig(array $overrides = []): array {
-    $config = array_merge(DFMS_AI_CONFIG_DEFAULTS, aiConfigEnvOverrides());
+    $environment = aiConfigEnvOverrides();
+    $config = array_merge(DFMS_AI_CONFIG_DEFAULTS, $environment);
+
+    // Did anyone actually NAME a model, or is $config['model'] just the global
+    // default sitting there? The distinction matters: an unnamed model must
+    // follow the provider (see DFMS_AI_PROVIDER_DEFAULT_MODELS), while a named
+    // one is the operator's explicit choice and is left exactly as given —
+    // including a Gemini model on Anthropic, which is their mistake to make
+    // and their 400 to read, not something for this layer to silently correct.
+    $modelWasNamed = array_key_exists('model', $environment)
+        || (array_key_exists('model', $overrides) && $overrides['model'] !== null);
 
     foreach ($overrides as $key => $value) {
         // Only the keys this layer owns. Callers legitimately pass unrelated
@@ -269,6 +300,13 @@ function aiRequestConfig(array $overrides = []): array {
             throw new AiConfigViolation("AI configuration '$key' must be between $min and $max.");
         }
         $config[$key] = $key === 'temperature' ? (float) $value : (int) $value;
+    }
+
+    // Resolved LAST, once the provider is final: an unnamed model belongs to
+    // whichever provider ended up selected.
+    if (!$modelWasNamed) {
+        $config['model'] = DFMS_AI_PROVIDER_DEFAULT_MODELS[$config['provider']]
+            ?? DFMS_AI_CONFIG_DEFAULTS['model'];
     }
 
     return $config;

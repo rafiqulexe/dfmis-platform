@@ -32,6 +32,12 @@ const DFMS_AUDIT_DENY_KEYS = [
     'password', 'password_hash', 'passwd', 'pass', 'new_password', 'old_password',
     'confirm_password', 'csrf_token', 'api_key', 'anthropic_api_key', 'token',
     'secret', 'authorization', 'session_id', 'remember_token', 'private_key',
+    // One entry per provider credential NAME. A key never reaches an audit
+    // payload by design — nothing copies one into a metadata array — but this
+    // list is the backstop for a future caller that passes a request array
+    // through wholesale, and a backstop that knows only one vendor's variable
+    // name stops working the day a second is configured.
+    'gemini_api_key', 'google_api_key', 'x_goog_api_key',
 ];
 
 // Recursively strips credential-bearing keys and truncates oversized values.

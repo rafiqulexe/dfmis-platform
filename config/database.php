@@ -65,7 +65,13 @@ define('DB_CHARSET', getenv('DB_CHARSET') ?: 'utf8mb4');
 
 // AI provider config (used by the veterinary assistant / farm advisor — Phase 5).
 // Empty until a key is supplied; features check this and degrade gracefully.
+//
+// ONE CONSTANT PER PROVIDER, and each is read from the environment only. Which
+// one is actually used is decided by AI_PROVIDER through includes/ai_config.php
+// — defining both here does NOT make both active. A provider that is not the
+// configured one is never constructed, so its key is never read.
 define('ANTHROPIC_API_KEY', getenv('ANTHROPIC_API_KEY') ?: '');
+define('GEMINI_API_KEY', getenv('GEMINI_API_KEY') ?: '');
 
 // ---------------------------------------------------------------------------
 // Application URL

@@ -113,7 +113,9 @@ section "Provider credentials never appear anywhere"
 for URL in "modules/ai/" "modules/ai/knowledge.php" "api/index.php/v1/ai-status" "api/index.php/v1/ai-conversations"; do
     curl -s -b "$ADMIN" -o "$TMP/leak.txt" "$BASE/$URL"
     LEAKED=""
-    for TERM in "sk-" "ANTHROPIC_API_KEY" "x-api-key" "api.anthropic.com"; do
+    # EVERY provider's credential shape, not just the one configured today.
+    for TERM in "sk-" "ANTHROPIC_API_KEY" "x-api-key" "api.anthropic.com" \
+                "GEMINI_API_KEY" "x-goog-api-key" "AIzaSy" "generativelanguage.googleapis.com"; do
         if grep -qi -- "$TERM" "$TMP/leak.txt"; then
             LEAKED="$LEAKED $TERM"
         fi
@@ -292,6 +294,13 @@ check_present "ai-status lists the tools this caller may use" "$TMP/status.json"
 # that remains the whole of what any caller learns about it.
 check_absent "ai-status leaks no api key"        "$TMP/status.json" 'sk-'
 check_absent "ai-status leaks no key variable"   "$TMP/status.json" 'ANTHROPIC_API_KEY'
+# One assertion per provider credential. A scan that knows only the vendor that
+# happened to be configured first stops protecting anything the day a second is
+# added — which is exactly what happened when Gemini was introduced.
+check_absent "ai-status leaks no gemini key variable" "$TMP/status.json" 'GEMINI_API_KEY'
+check_absent "ai-status leaks no google key header"   "$TMP/status.json" 'x-goog-api-key'
+check_absent "ai-status leaks no google key prefix"   "$TMP/status.json" 'AIzaSy'
+check_absent "ai-status leaks no google endpoint"     "$TMP/status.json" 'generativelanguage.googleapis.com'
 check_absent "ai-status leaks no auth header"    "$TMP/status.json" 'x-api-key'
 check_absent "ai-status leaks no provider host"  "$TMP/status.json" 'api.anthropic.com'
 check_absent "ai-status leaks no prompt body"    "$TMP/status.json" 'ABSOLUTE RULES'
