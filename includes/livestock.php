@@ -1008,14 +1008,23 @@ function animalTimeline(PDO $conn, int $animalId, int $page = 1, int $perPage = 
         $events[] = $healthEvent;
     }
 
-    // NOTE: milk production is deliberately absent. milk_production records a
-    // FARM-level daily total and carries no cow_id, so there is no per-animal
-    // production event to show. Per-animal yield is Phase 8; claiming it here
-    // would mean attributing the whole herd's output to every animal.
+    // Phase 6 — per-animal production.
     //
-    // Phase 4 note: this is the SAME limitation that stops withdrawal periods
-    // from being enforced against production rather than merely surfaced. See
-    // docs/DFMIS_VETERINARY_HEALTH_ARCHITECTURE.md.
+    // This note previously read "milk production is deliberately absent",
+    // because milk_production carries a FARM-level daily total and no cow_id,
+    // so there was genuinely no per-animal event to show and inventing one
+    // would have attributed the whole herd's output to every animal.
+    //
+    // milk_yields (migration 012) records real per-animal readings, so the
+    // timeline can now include them WITHOUT that fabrication. The farm-level
+    // aggregate is still not shown here and still must not be: it remains a
+    // measurement of the herd, not of this animal.
+    //
+    // Same lazy require_once reasoning as health.php above.
+    require_once __DIR__ . '/production.php';
+    foreach (productionTimelineEvents($conn, $animalId) as $productionEvent) {
+        $events[] = $productionEvent;
+    }
 
     usort($events, function ($a, $b) {
         return strcmp((string) $b['occurred_at'], (string) $a['occurred_at']);

@@ -35,7 +35,7 @@ $profile = animalProfile($conn, $animalId);
 $animal = $profile['animal'];
 
 $v = new DfmsValidator($_GET);
-$tab = $v->enum('tab', ['overview', 'timeline', 'identity', 'parentage', 'health', 'documents', 'photos'], ['default' => 'overview']);
+$tab = $v->enum('tab', ['overview', 'timeline', 'identity', 'parentage', 'health', 'production', 'documents', 'photos'], ['default' => 'overview']);
 if ($v->fails()) {
     $tab = 'overview';
 }
@@ -151,6 +151,7 @@ foreach ($profile['photos'] as $photo) {
         'identity'   => 'Identity',
         'parentage'  => 'Parentage',
         'health'     => 'Health',
+        'production' => 'Production',
         'documents'  => 'Documents',
         'photos'     => 'Photos',
     ];
@@ -297,8 +298,9 @@ foreach ($profile['photos'] as $photo) {
             <?php endif; ?>
 
             <p class="dfms-text-muted" style="font-size:.85rem;margin-top:1rem;">
-                Milk production is not shown per animal: production is currently recorded as a
-                farm-level daily total, so there is no per-animal figure to attribute.
+                Recorded milkings for this animal appear in the timeline and in full on the
+                Production tab. The farm's daily bulk totals are recorded separately and are
+                never attributed to an individual animal.
             </p>
         </div>
     </section>
@@ -762,6 +764,117 @@ foreach ($profile['photos'] as $photo) {
     </section>
 
     </div>
+
+<?php elseif ($tab === 'production'): ?>
+    <!-- ===================== PRODUCTION =====================
+         Phase 6. THIS ANIMAL'S OWN RECORDED YIELDS AND NOTHING ELSE.
+         The farm daily total is never shown here: it measures the herd, and
+         presenting it on an animal's page would attribute the whole farm's
+         output to one animal. Before Phase 6 this tab did not exist and the
+         Timeline tab carried a note saying exactly why. -->
+    <?php
+    require_once '../../includes/production.php';
+    $canViewProduction = hasPermission('milk.view');
+    $yields = $canViewProduction ? productionAnimalYields($conn, (int) $animal['cow_id'], 30) : [];
+    $trend = $canViewProduction ? productionAnimalTrend($conn, (int) $animal['cow_id']) : ['days' => [], 'baseline' => null, 'latest' => null];
+    // Read from the health domain — the one owner of the withdrawal question.
+    $activeMilkWithdrawals = [];
+    foreach (healthActiveWithdrawals($conn, (int) $animal['cow_id']) as $withdrawal) {
+        if ($withdrawal['restriction_type'] === 'milk') {
+            $activeMilkWithdrawals[] = $withdrawal;
+        }
+    }
+    ?>
+
+    <?php if (!$canViewProduction): ?>
+        <section class="dfms-section">
+            <div class="dfms-card"><div class="dfms-card-body">
+                <?php dfms_empty_state('Production is not visible to your role', '', '', 'lock'); ?>
+            </div></div>
+        </section>
+    <?php else: ?>
+
+        <?php if ($activeMilkWithdrawals !== []): ?>
+            <!-- The restriction leads the tab, above the figures, for the same
+                 reason the health tab puts current standing first. -->
+            <div class="animal-note-warn" style="border-left:3px solid var(--warning);padding:var(--space-3) var(--space-4);background:var(--warning-bg);color:var(--warning-fg);border-radius:var(--radius-sm);font-size:var(--text-sm);margin-bottom:var(--space-5);">
+                <strong>Milk withdrawal in force.</strong>
+                <?php foreach ($activeMilkWithdrawals as $withdrawal): ?>
+                    Withheld until <?php echo e((string) $withdrawal['ends_on']); ?> inclusive
+                    (<?php echo (int) healthWithdrawalDaysRemaining($withdrawal); ?> day(s) remaining).
+                <?php endforeach; ?>
+                Milk recorded during this period is kept, marked restricted, and excluded from
+                the saleable total.
+            </div>
+        <?php endif; ?>
+
+        <section class="dfms-section">
+            <div class="dfms-card"><div class="dfms-card-body">
+                <h2>Recent production</h2>
+                <?php if ($yields === []): ?>
+                    <?php dfms_empty_state(
+                        'No production recorded for this animal',
+                        'Per-animal milkings recorded for this animal will appear here. '
+                            . 'Farm daily totals are not shown, because they measure the whole herd.',
+                        hasPermission('milk.create')
+                            ? dfms_button_html('Record a milking', BASE_URL . 'modules/milk/record.php', 'primary')
+                            : '',
+                        'inbox'
+                    ); ?>
+                <?php else: ?>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--space-4);margin-bottom:var(--space-5);">
+                        <?php
+                        echo dfms_metric_html(
+                            'Latest recorded day',
+                            $trend['latest'] !== null ? fmt_measure($trend['latest']['total'], 'volume') : '—',
+                            '',
+                            $trend['latest'] !== null
+                                ? '<span class="dfms-text-muted">' . e($trend['latest']['date']) . '</span>' : ''
+                        );
+                        echo dfms_metric_html(
+                            'Average per recorded day',
+                            $trend['baseline'] !== null ? fmt_measure($trend['baseline'], 'volume') : '—',
+                            '',
+                            '<span class="dfms-text-muted">over '
+                                . max(0, count($trend['days']) - 1) . ' earlier day(s)</span>'
+                        );
+                        ?>
+                    </div>
+
+                    <?php dfms_table_open([
+                        ['label' => 'Date'], ['label' => 'Milking'], ['label' => 'Quantity'],
+                        ['label' => 'Discarded'], ['label' => 'Status'],
+                    ]); ?>
+                    <?php foreach ($yields as $row): ?>
+                        <tr>
+                            <?php dfms_cell('Date', e(fmt_date($row['production_date']))); ?>
+                            <?php dfms_cell('Milking', e(dfms_milking_session_label($row['session']))); ?>
+                            <?php dfms_cell('Quantity', e(fmt_measure((float) $row['quantity'], 'volume'))); ?>
+                            <?php dfms_cell('Discarded', (float) $row['discarded'] > 0
+                                ? e(fmt_measure((float) $row['discarded'], 'volume')) : '—'); ?>
+                            <?php
+                            $badges = [];
+                            if (!empty($row['restricted'])) {
+                                $badges[] = dfms_badge_html('Withdrawal', 'warning');
+                            }
+                            if (!empty($row['abnormal'])) {
+                                $badges[] = dfms_badge_html('Abnormal', 'warning');
+                            }
+                            dfms_cell('Status', $badges === []
+                                ? dfms_badge_html('Normal', 'success') : implode(' ', $badges));
+                            ?>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php dfms_table_close(); ?>
+
+                    <p class="dfms-text-muted" style="font-size:.85rem;margin-top:1rem;">
+                        These are this animal's own recorded milkings. The farm's daily bulk totals are
+                        recorded separately and are not shown here.
+                    </p>
+                <?php endif; ?>
+            </div>
+        </section>
+    <?php endif; ?>
 
 <?php elseif ($tab === 'documents' || $tab === 'photos'): ?>
     <!-- ===================== DOCUMENTS / PHOTOS ===================== -->

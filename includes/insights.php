@@ -151,7 +151,128 @@ function getFarmAdvisorInsights(PDO $conn, ?int $farmId): array {
         ];
     }
 
+    // ---- Per-animal production (Phase 6) ----
+    //
+    // ADDED TO the advisor, not replacing anything. The farm-level trend above
+    // is untouched and still runs first; this contributes the signal that only
+    // per-animal records can produce — WHICH animal moved — which a farm total
+    // by definition cannot tell you.
+    //
+    // Guarded on the table existing so the advisor keeps working on an
+    // installation that has not yet run migration 012, exactly as it already
+    // degrades when a farm has no data.
+    foreach (getProductionInsights($conn, $farmId) as $insight) {
+        $insights[] = $insight;
+    }
+
     usort($insights, fn($a, $b) => DFMS_SEVERITY_RANK[$a['severity']] <=> DFMS_SEVERITY_RANK[$b['severity']]);
+    return $insights;
+}
+
+/**
+ * Deterministic per-animal production insights.
+ *
+ * NO AI. Plain arithmetic over recorded rows, phrased as arithmetic: the
+ * advisor reports that a figure moved, never why. "Production decreased
+ * significantly" is a fact about the numbers; "the animal is sick" would be a
+ * diagnosis this layer is not entitled to make and has no evidence for.
+ *
+ * Returns an empty list — not a fabricated reassurance — when there is nothing
+ * recorded to reason about.
+ *
+ * @return list<array<string, string>>
+ */
+function getProductionInsights(PDO $conn, int $farmId): array {
+    $insights = [];
+
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'milk_yields'"
+    );
+    $stmt->execute();
+    if ((int) $stmt->fetchColumn() === 0) {
+        return $insights;
+    }
+
+    $timezone = dfms_setting('timezone', $farmId);
+    $today = dfms_date_offset($timezone, 0);
+    $windowStart = dfms_date_offset($timezone, -13);
+
+    // How much of the herd is actually being recorded. A farm that has adopted
+    // per-animal recording for three of forty cows should be told, because
+    // every other per-animal number on the page is only about those three.
+    $stmt = $conn->prepare(
+        "SELECT
+            (SELECT COUNT(DISTINCT y.cow_id) FROM milk_yields y
+              WHERE y.farm_id = ? AND y.production_date BETWEEN ? AND ?) AS recorded_animals,
+            (SELECT COUNT(*) FROM cows c
+              WHERE c.farm_id = ? AND c.deleted_at IS NULL AND c.lifecycle_status = 'active'
+                AND c.lactation_status = 'lactating') AS lactating"
+    );
+    $stmt->execute([$farmId, $windowStart, $today, $farmId]);
+    $coverage = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['recorded_animals' => 0, 'lactating' => 0];
+
+    $recorded = (int) $coverage['recorded_animals'];
+    $lactating = (int) $coverage['lactating'];
+
+    if ($recorded === 0) {
+        // Nothing recorded is not a problem to alarm anyone about — it is a
+        // capability they may not know exists. Stated once, as info.
+        if ($lactating > 0) {
+            $insights[] = [
+                'severity' => 'info',
+                'title'    => 'Per-animal milk recording is not in use yet',
+                'why'      => sprintf(
+                    '%d animal%s marked lactating, but no per-animal yields have been recorded in the last 14 days.',
+                    $lactating, $lactating === 1 ? ' is' : 's are'
+                ),
+                'impact'   => 'Farm totals show the herd trend, but not which animal is behind a change.',
+                'action'   => 'Record a milking session to start building per-animal history.',
+                'link'     => 'modules/milk/record.php', 'link_label' => 'Record a milking',
+            ];
+        }
+        return $insights;
+    }
+
+    if ($lactating > 0 && $recorded < $lactating) {
+        $insights[] = [
+            'severity' => 'info',
+            'title'    => sprintf('Per-animal recording covers %d of %d lactating animals', $recorded, $lactating),
+            'why'      => 'The remaining animals have no individual yields in the last 14 days.',
+            // Says plainly what the partial coverage means for every other
+            // per-animal figure shown, rather than letting it be read as
+            // herd-wide.
+            'impact'   => 'Per-animal figures below describe only the animals being recorded, not the whole herd.',
+            'action'   => 'Record the remaining animals to make herd comparisons meaningful.',
+            'link'     => 'modules/milk/?tab=animals', 'link_label' => 'View production',
+        ];
+    }
+
+    // Animals whose latest recorded day sits well below their OWN baseline.
+    // Comparing an animal to itself, not to the herd — on a mixed farm a
+    // high-yielding cow and a late-lactation cow say nothing about each other.
+    $stmt = $conn->prepare(
+        "SELECT a.alert_id, a.description FROM alerts a
+          WHERE a.farm_id = ? AND a.is_read = 0 AND a.alert_type = 'Production drop'
+          ORDER BY FIELD(a.severity,'critical','warning','info'), a.alert_time DESC
+          LIMIT 5"
+    );
+    $stmt->execute([$farmId]);
+    $drops = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if ($drops !== []) {
+        $insights[] = [
+            'severity' => 'warning',
+            'title'    => sprintf('%d animal%s producing well below their recent average',
+                count($drops), count($drops) === 1 ? ' is' : 's are'),
+            'why'      => implode(' ', array_column($drops, 'description')),
+            'impact'   => 'A sustained drop reduces saleable volume and can be an early operational signal.',
+            // Deliberately does NOT say what is wrong. It says where to look.
+            'action'   => 'Check feed intake, the milking routine and the animal\'s health record.',
+            'link'     => 'modules/milk/?tab=animals', 'link_label' => 'Review production',
+        ];
+    }
+
     return $insights;
 }
 

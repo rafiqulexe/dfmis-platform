@@ -32,6 +32,7 @@ require_once __DIR__ . '/repository.php';
 require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/units.php';
 require_once __DIR__ . '/livestock.php';
+require_once __DIR__ . '/inventory.php';
 // A HARD dependency, deliberately not a function_exists() guard.
 //
 // Every clinical mutation in this file must be audited — who administered
@@ -1524,39 +1525,34 @@ function healthAdministerMedication(PDO $conn, int $animalId, array $data): int 
         $deducted = false;
 
         if ($deduct && $item !== null) {
-            // Lock the level row. Scoped by farm_id as well as item_id so the
-            // lock cannot be taken on another tenant's stock.
-            $stmt = $conn->prepare(
-                "SELECT inventory_id, quantity FROM inventory_levels
-                  WHERE item_id = ? AND farm_id = ? FOR UPDATE"
-            );
-            $stmt->execute([(int) $item['item_id'], currentFarmId()]);
-            $level = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($level === false) {
-                throw new HealthRuleViolation('That medication has no stock record on this farm.');
-            }
-            $remaining = (float) $level['quantity'] - $quantity;
-            if ($remaining < 0) {
-                throw new HealthRuleViolation(
-                    'Not enough stock: ' . fmt_number((float) $level['quantity'], 2) . ' '
-                    . (string) $item['unit'] . ' remaining.'
+            // PHASE 6: this sequence — lock the level row scoped by farm_id,
+            // refuse to go below zero, update, write a 'stock.adjust' audit
+            // entry — was extracted verbatim into inventoryConsume() when feed
+            // consumption needed the identical rule. Keeping a second copy
+            // here would have meant two implementations of "may stock go
+            // negative", and the one that drifted would be whichever was
+            // edited second.
+            //
+            // The behaviour is unchanged: same lock, same floor, same audit
+            // action and reason, same rollback into the caller's transaction.
+            try {
+                inventoryConsume(
+                    $conn,
+                    (int) $item['item_id'],
+                    $quantity,
+                    'medication administration',
+                    ['cow_id' => (int) $animal['cow_id']],
+                    // The unit, so the refusal still reads "3.00 ml remaining"
+                    // rather than a bare number, exactly as it did before the
+                    // helper was extracted.
+                    (string) $item['unit']
                 );
+            } catch (InventoryStockError $e) {
+                // Re-typed so every caller of this function still catches a
+                // single domain exception, exactly as before.
+                throw new HealthRuleViolation($e->getMessage());
             }
-
-            tenantExec(
-                $conn,
-                "UPDATE inventory_levels SET quantity = ? WHERE inventory_id = ? AND {scope}",
-                [$remaining, (int) $level['inventory_id']]
-            );
             $deducted = true;
-
-            // Audited as a stock movement too, so the inventory trail shows why
-            // the quantity fell without anyone opening the health module.
-            auditLog('stock.adjust', 'inventory_level', (int) $level['inventory_id'],
-                ['quantity' => (float) $level['quantity']],
-                ['quantity' => $remaining, 'reason' => 'medication administration', 'cow_id' => (int) $animal['cow_id']]
-            );
         }
 
         $administrationId = tenantInsert($conn, 'medication_administrations', [

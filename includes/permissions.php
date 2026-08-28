@@ -75,6 +75,28 @@ const DFMS_PERMISSIONS = [
     'milk.create'      => ['farm_manager', 'staff'],
     'milk.edit'        => ['farm_manager', 'staff'],
 
+    // Phase 6 — Production & Feeding.
+    //
+    // Exactly ONE new permission was added for this whole phase, and this is
+    // it. Everything else reuses what already existed:
+    //
+    //   recording / correcting a per-animal yield  -> milk.create / milk.edit
+    //   viewing production and analytics           -> milk.view
+    //   rations and feed consumption               -> feeding.create / .view
+    //
+    // Feed consumption deducts stock, which looks like it should also demand
+    // inventory.update — but that permission's role list is IDENTICAL to
+    // feeding.create's (farm_manager, staff), so requiring both would grant
+    // nothing extra while implying a distinction the matrix does not make.
+    //
+    // milk.delete exists because DELETING is genuinely a different decision
+    // from correcting, and this codebase already says so everywhere else:
+    // cows.delete, alerts.delete and files.delete are each farm-manager-only
+    // and separately named. Correcting a mis-keyed figure is routine
+    // stockmanship; permanently erasing the record that an animal produced
+    // milk on a date is not, and staff should not be able to do it.
+    'milk.delete'      => ['farm_manager'],
+
     'inventory.view'   => ['farm_manager', 'veterinarian', 'staff', 'accountant', 'viewer'],
     'inventory.create' => ['farm_manager', 'staff'],
     'inventory.update' => ['farm_manager', 'staff'],

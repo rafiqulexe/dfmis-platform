@@ -509,21 +509,54 @@ adversarial prompting; every proposed action is confirmable and audited.
 
 ---
 
-## Phase 8 · Production / Feed / Reproduction Intelligence
+## Phase 8 · Production / Feed / Reproduction Intelligence — **8A COMPLETE**
 
-- **Per-animal milk yield** — currently only farm-level daily totals exist. This is
-  the single largest data-model gap in the product.
-- Milking session records (AM/PM), parlour and robot integration
+> **Delivered out of order.** The production and feeding half of this phase was
+> built before Phases 6 and 7 because it closes the data-model gap those phases
+> would otherwise have to work around: an AI copilot or vision feature that
+> cannot attribute a yield to an animal is reasoning over a farm average.
+> Phases 6 and 7 remain **not started** — see below.
+
+### 8A · Production & feeding operations — **COMPLETE**
+
+- **Per-animal milk yield** — was "the single largest data-model gap in the
+  product". `milk_yields` now records animal + date + milking session, and the
+  pre-existing farm-level `milk_production` daily aggregate is untouched. The
+  two are reported side by side and **never reconciled**: a farm total is a
+  bulk-tank measurement and does not decompose into per-animal figures.
+- Milking session records — morning / midday / evening / other, part of the
+  uniqueness key so one animal cannot be double-entered for one milking.
+- Withdrawal integration — a milk restriction is **computed from
+  `withdrawal_periods` at read time**, never copied onto the yield row, so
+  correcting a withdrawal corrects every historical record it covered.
+  Recording is warned, not blocked, matching the Phase 4 semantics.
+- Feed consumption — `feed_consumption_events` links use to an
+  `inventory_items` row and deducts stock through the **same** helper
+  medication administration uses. No second stock ledger was created; the
+  audit log remains the movement history.
+- Rations — reusable plans (`feed_rations` + `feed_ration_items`). A plan
+  never consumes inventory; only a recorded consumption event does.
+- Deterministic analytics — daily/animal totals, saleable volume, per-animal
+  baselines. Days with no records are **absent, never reported as zero**.
+- Operational alerts — a production-drop reconciler sharing the existing
+  alerts table, dedupe key and auto-resolve rule, over a disjoint alert-type
+  family. It states arithmetic, never a diagnosis.
+
+**Exit criteria met** — yield is attributable to the individual animal.
+
+### 8B · Still to do
+
 - Quality metrics: fat, protein, somatic cell count, bacterial count
-- Feed formulation, ration planning, feed-conversion ratio
-- Activate `feed_consumption`, which has a table but no UI writer
-- Reproduction module: heat detection, insemination records, pregnancy checks,
-  calving, genealogy. `cows.reproductive_status` exists and is unused.
+  (`laboratory_tests` from Phase 4 is the right home; only lightweight
+  operational fields — discarded volume, abnormal flag — were added inline)
+- Parlour and robot integration
+- Feed formulation and feed-conversion ratio
+- Reproduction module: heat detection, insemination, pregnancy checks,
+  calving, genealogy. `cows.reproductive_status` exists and is still unused.
 - Lactation curve modelling and yield forecasting
 - Breeding value and genetic merit tracking
 
-**Exit criteria** — yield is attributable to the individual animal; a full
-reproduction cycle is recordable.
+**Remaining exit criteria** — a full reproduction cycle is recordable.
 
 ---
 
@@ -684,8 +717,6 @@ becomes. Consider pulling the schema change forward into Phase 3.
 
 ## Current position
 
-**Phase 0 complete. Phase 1 complete. Phase 2A complete; Phase 2B not started.**
-
 | Phase | Status | Commit |
 |---|---|---|
 | 0 · Baseline | complete | `50277c8` |
@@ -693,21 +724,33 @@ becomes. Consider pulling the schema change forward into Phase 3.
 | 2A · International foundation | complete | `78b25ac` |
 | 2B · Platform Engineering Foundation | complete | `cfac2ce` |
 | 2C · Platform surfaces | **not started** | — |
-| 3 · Livestock Core & Animal Digital Twin | complete | `feat: establish livestock core and animal digital twin` |
-| 4 · Health & Veterinary | complete | `feat: implement veterinary health foundation` |
-| 5D · AI Veterinarian Assistant + RAG | complete | `feat: implement AI veterinarian assistant and RAG foundation` |
-| 5A / 5B / 5C · AI vision & prediction | not started | — |
-| 6+ | not started | — |
+| 3 · Livestock Core & Animal Digital Twin | complete | `ed7c656` |
+| 4 · Health & Veterinary | complete | `d72694e` |
+| 5D · AI Veterinarian Assistant + RAG | complete | `b62c6b2` |
+| 5E · Reusable AI platform foundation | complete | `caa6dc3` |
+| 5F · Controlled AI tool calling | complete | `30d5b11` |
+| 8A · Production & feeding operations | complete | `feat: build production and feeding operations` |
+| 5A / 5B / 5C · AI vision & prediction | **not started** | — |
+| 6 · AI Disease & Vision | **not started** | — |
+| 7 · Farm AI Copilot | **not started** | — |
+| 8B · Reproduction & lactation modelling | **not started** | — |
+| 9+ | **not started** | — |
 
-Test suite: **1445 assertions across 11 suites, all passing** (`bash tests/run_all.sh`).
+Test suite: **2578 assertions across 12 suites, all passing** (`bash tests/run_all.sh`).
 Static analysis: **PHPStan level 5, zero findings, empty baseline**.
-Schema at migration **009**.
+Schema at migration **012**.
 
-**Phase 5D is complete; 5A/5B/5C and Phase 6 remain.** The structured, coded and
-provenance-complete clinical record it needs now exists, and it represents
-uncertainty explicitly — `suspected` / `ruled_out`, `outcome: unknown`, absent
-confidence stored as NULL — so a model reads what was actually known rather than
-a flattened certainty.
+**What is genuinely built:** the clinical record (Phase 4), the AI platform and its
+controlled read-only tool loop (5D–5F), and per-animal production and feeding
+operations (8A). Every one of these is deterministic and usable with **no AI
+provider configured** — the AI surfaces degrade explicitly and the production,
+feeding and advisor features never call a model at all.
+
+**What is not built, and is not partially built:** AI disease detection, animal
+image analysis, computer vision, predictive health AI, Smart Farm Intelligence,
+the Farm Copilot, and IoT ingestion. No tables, prompts, flags or stub screens
+exist for any of them; the `future_*` feature flags remain registered and
+default-off, which is asserted by test.
 
 Three items are worth weighing before the next phase:
 

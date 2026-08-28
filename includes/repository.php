@@ -54,6 +54,14 @@ const DFMS_TENANT_TABLES = [
     // a farm-scoped read of a table whose rows legitimately have no farm.
     'ai_knowledge_sources', 'ai_knowledge_documents', 'ai_knowledge_chunks',
     'ai_conversations', 'ai_messages', 'ai_message_sources',
+    // Phase 6 — Production & Feeding operations. Every one carries farm_id.
+    //
+    // NOTE what is NOT here and why: the pre-existing `milk_production` and
+    // `feed_consumption` are farm-level DAILY AGGREGATES and were already
+    // registered above; `milk_yields` and `feed_consumption_events` are their
+    // per-animal / per-item satellites and are separate rows with separate
+    // meanings, never a replacement.
+    'milk_yields', 'feed_consumption_events', 'feed_rations', 'feed_ration_items',
 ];
 
 // Identifiers we will interpolate into SQL must be provably safe, because no

@@ -156,6 +156,22 @@ $routes = [
     // ai-status is NOT public. /v1/health already serves as the unauthenticated
     // liveness probe; whether an organization has AI configured and how much
     // allowance it has left is tenant business information.
+    // ---- Phase 6: Production ----------------------------------------------
+    //
+    // ONE new route, read-only, and only because production analytics is
+    // genuinely useful to a client that is not a browser. Feeding deliberately
+    // gets NO endpoint: recording consumption moves stock, and this API has
+    // been read-only since Phase 2B — a write surface for it would be a new
+    // security decision, not a convenience.
+    '/v1/production' => [
+        'methods'    => ['GET'],
+        'handler'    => __DIR__ . '/v1/production.php',
+        'auth'       => true,
+        'permission' => 'milk.view',
+        // Serves /v1/production and /v1/production/{animal id}.
+        'accepts_id' => true,
+    ],
+
     '/v1/ai-status' => [
         'methods'    => ['GET'],
         'handler'    => __DIR__ . '/v1/ai-status.php',
