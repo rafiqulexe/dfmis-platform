@@ -42,8 +42,9 @@ function assertLooksLikeTestDatabase(string $name): void {
     }
 }
 
+// $_SERVER['argv'] rather than $argv — see the note in tools/lint.php.
 $mode = 'status';
-foreach (array_slice($argv, 1) as $arg) {
+foreach (array_slice($_SERVER['argv'] ?? [], 1) as $arg) {
     if (in_array($arg, ['--create', '--drop', '--status'], true)) {
         $mode = substr($arg, 2);
     }

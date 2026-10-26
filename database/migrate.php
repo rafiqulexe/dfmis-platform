@@ -41,7 +41,8 @@ $applied = array_flip($applied);
 $files = glob(__DIR__ . '/migrations/*.{sql,php}', GLOB_BRACE) ?: [];
 sort($files, SORT_NATURAL);
 
-$args = array_slice($argv, 1);
+// $_SERVER['argv'] rather than $argv — see the note in tools/lint.php.
+$args = array_slice($_SERVER['argv'] ?? [], 1);
 $mode = 'apply';
 if (in_array('--status', $args, true)) {
     $mode = 'status';

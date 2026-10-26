@@ -53,11 +53,17 @@ parameters:
     # Migrations return closures and are executed by the runner, never included
     # for their declarations; analysing them as libraries produces noise about
     # unused returns rather than real findings.
+    # Only paths that are guaranteed to exist belong here. PHPStan 2.x treats a
+    # missing excludePaths entry as a hard error, so listing a gitignored
+    # directory passes locally (where it has been created by a previous run)
+    # and fails on a fresh checkout — which is exactly how CI broke on its
+    # first run, on a .phpunit.cache entry that guarded nothing: it holds no
+    # PHP and sits under none of the analysed or scanned paths above. A path
+    # that may legitimately be absent needs the "(?)" optional marker.
     excludePaths:
         analyseAndScan:
             - vendor
             - storage
-            - .phpunit.cache
 
     # PHP version the code actually runs on, so PHPStan reasons about the right
     # standard library signatures and deprecations.

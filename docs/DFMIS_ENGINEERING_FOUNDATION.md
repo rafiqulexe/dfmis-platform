@@ -69,17 +69,40 @@ Two direct dependencies, both dev-only. Nothing else was added.
 
 ### Why PHPStan moved from ^1.12 to ^2.2
 
-Not housekeeping — 1.12 is **wrong** on a current runtime. Its last feature
-release predates PHP 8.5, and running it on 8.5.12 produced three false
-positives (`Variable $argv might not be defined` in `tools/lint.php`,
-`tools/test-db.php` and `database/migrate.php`) that do not appear on 8.2.12
-with the identical configuration and an explicit `register_argc_argv=On`.
+1.12's last feature release predates PHP 8.5 by months, which is reason enough
+not to analyse an 8.5 codebase with it. The upgrade also paid for itself
+immediately: 2.3.2 found two things 1.12 did not — `AiToolGetRecentAlerts::run()`
+and `AiToolGetFarmSummary::run()` both declaring the abstract's `?array` while
+neither can return null — and those were fixed by narrowing the return types,
+not baselined.
 
-A static analyser that invents findings on the runtime you ship is worse than
-none: it trains you to ignore it. 2.3.2 reports zero on both 8.2.12 and
-8.5.12, and the two genuine findings the upgrade did surface — two
-`AiTool::run()` overrides declaring `?array` while never returning null — were
-fixed by narrowing the return types, not baselined.
+**A correction worth recording, because the first diagnosis was wrong.** Three
+`Variable $argv might not be defined` findings (in `tools/lint.php`,
+`tools/test-db.php` and `database/migrate.php`) were initially blamed on 1.12
+being "wrong on a current runtime", and the PHPStan upgrade was credited with
+fixing them. It did not. Re-tested with the result cache cleared between runs,
+the finding depends **entirely on `register_argc_argv`** and not at all on the
+analyser version:
+
+| Runtime | `register_argc_argv` | PHPStan 2.3.2 |
+|---|---|---|
+| 8.5.12 | Off | 3 findings |
+| 8.5.12 | On | clean |
+| 8.2.12 | On | clean |
+
+The earlier "clean" result was a stale cached one, read after the directive was
+changed — an ini change does not invalidate PHPStan's result cache, so it
+replayed an answer from before the change. Two lessons: clear the result cache
+before trusting a comparison, and a result that confirms what you expect still
+needs the same scrutiny as one that does not.
+
+PHPStan was also **right**. `$argv` is only guaranteed when that directive is
+on, and it has to stay off here because PHP 8.5 deprecates deriving argv from
+the query string on every web request. The CLI SAPI populates `$argv` anyway,
+so the scripts were never actually broken — but they were relying on something
+the configuration did not promise. The three now read
+`$_SERVER['argv'] ?? []`, which is correct under either setting and in either
+SAPI, and the findings are gone on their merits rather than silenced.
 
 ---
 

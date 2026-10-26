@@ -20,7 +20,14 @@ if (PHP_SAPI !== 'cli') {
 }
 
 $root = dirname(__DIR__);
-$quiet = in_array('--quiet', $argv, true);
+
+// Read through $_SERVER rather than the bare $argv. The CLI SAPI populates
+// both whatever register_argc_argv says, so this is not a behaviour change —
+// but $argv is only *guaranteed* when that directive is on, and it must stay
+// off here because PHP 8.5 deprecates deriving argv from the query string on
+// every web request. $_SERVER is a superglobal that always exists, so this
+// reads correctly under either setting and in either SAPI.
+$quiet = in_array('--quiet', $_SERVER['argv'] ?? [], true);
 
 // Directories that contain PHP we did not write, or that are not part of the
 // application. vendor/ is third-party and its lint status is not ours to fix.
