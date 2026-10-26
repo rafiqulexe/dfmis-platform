@@ -79,11 +79,24 @@ Retired, kept for rollback and safe to delete once you are confident:
 `includes/i18n.php` branches on `extension_loaded('intl')`: with it, numbers
 are formatted through `NumberFormatter`; without it, a built-in fallback runs.
 
-**The project is developed and tested on the fallback path**, because the
-reference environment has never had `intl` loaded. Enabling it silently
-changes number formatting across the application and is not covered by any
-test. Treat turning it on as a change that needs its own verification, not as
-environment tidying.
+The local reference environment does **not** load `intl`, so day-to-day
+development exercises the fallback. CI's PHP build **does** include it, which
+means both branches are now exercised on every push — and that is how a real
+divergence was found.
+
+> **The two branches used to round differently.** ICU defaults to half-even
+> ("banker's rounding"), so `dfms_format_money(1234.5, 'JPY', 'en')` rendered
+> `JPY 1,234` with `intl` loaded and `JPY 1,235` without it. A monetary figure
+> depended on which extensions the server happened to have. `dfms_format_number()`
+> now sets `NumberFormatter::ROUND_HALFUP` explicitly, matching what
+> `number_format()` always did, and the two branches agree. Verified both ways:
+> `php tests/international_unit_test.php` and
+> `php -d extension=intl tests/international_unit_test.php` both report
+> 185 passed.
+
+Enabling `intl` locally is therefore no longer a formatting risk. It is still
+not the reference configuration, so if you turn it on, run the international
+suite both ways before trusting a result.
 
 ### Database engine
 

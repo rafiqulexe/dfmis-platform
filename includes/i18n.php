@@ -252,6 +252,23 @@ function dfms_format_number($value, string $locale, int $decimals = 2): string {
         $formatter = new NumberFormatter($locale, NumberFormatter::DECIMAL);
         $formatter->setAttribute(NumberFormatter::MIN_FRACTION_DIGITS, $decimals);
         $formatter->setAttribute(NumberFormatter::MAX_FRACTION_DIGITS, $decimals);
+
+        // Rounding mode is set EXPLICITLY so the two branches of this function
+        // cannot disagree. ICU defaults to half-even ("banker's rounding"), so
+        // it renders 1234.5 at zero decimals as 1,234, while the number_format()
+        // fallback below rounds half away from zero and renders 1,235. That
+        // made the formatting of a monetary amount depend on whether the intl
+        // extension happened to be installed on the server — a difference of
+        // one whole yen on an exact half, silently, with no way for a reader to
+        // tell which engine produced the figure.
+        //
+        // CI found this: it runs on a PHP build that includes intl, and the
+        // assertion `dfms_format_money(1234.5, 'JPY', 'en') === 'JPY 1,235'`
+        // failed there while passing on the intl-less development machine.
+        // Half-up is chosen because it is what the fallback already did and so
+        // is what every stored figure was produced with.
+        $formatter->setAttribute(NumberFormatter::ROUNDING_MODE, NumberFormatter::ROUND_HALFUP);
+
         $formatted = $formatter->format($value);
         if ($formatted !== false) {
             return $formatted;
