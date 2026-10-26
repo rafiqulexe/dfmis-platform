@@ -12,22 +12,58 @@ variable name is given and the value is left to your own `.env`.
 | Requirement | Version | Notes |
 |---|---|---|
 | **PHP** | 8.2 minimum, **8.5 recommended** (developed on 8.5.12) | Extensions: `pdo_mysql`, `mbstring`, `curl`, `fileinfo`, `json`, `openssl`. `zip` is needed by Composer. Do **not** enable `intl` — see [The intl extension](#the-intl-extension). |
-| **MariaDB** | 10.4+ | **MariaDB, not MySQL** — migrations 002–004 are raw SQL written against it. See [Database engine](#database-engine). |
+| **MariaDB** | **10.11 LTS** (developed on 10.11.19) | **MariaDB, not MySQL** — migrations 002–004 are raw SQL written against it. Matches the `mariadb:10.11` image CI uses. See [Database engine](#database-engine). |
 | **Composer** | 2.x | Dev tooling only; the application has no runtime dependencies. |
 | **bash + curl** | any | The integration suites are shell scripts. Git Bash is fine on Windows. |
 
 XAMPP supplies MariaDB and is the reference local setup for the database.
 
 **PHP is installed separately from XAMPP and deliberately so.** XAMPP bundles
-whatever PHP it shipped with — 8.2.12 here, built October 2023 — and that
-version leaves security support on 2026-12-31. The reference local runtime is
-therefore a standalone **PHP 8.5.12** at `C:\php85`, used for the CLI, the
-built-in dev server and the whole test harness. XAMPP's own PHP is left in
-place, unused by this project.
+whatever PHP it shipped with — 8.2.12, built October 2023 — and that version
+leaves security support on 2026-12-31. The reference runtime is a standalone
+**PHP 8.5.12** at `C:\php85`, used for the CLI, the built-in dev server and the
+whole test harness.
 
-Apache is not involved: the application is served by PHP's built-in server
-(`php -S`), so no `mod_php` or FastCGI wiring is needed and the two PHP
-installs cannot conflict.
+The application never needs Apache: it is served by PHP's built-in server
+(`php -S`). Apache is only there for phpMyAdmin and the XAMPP dashboard.
+
+### Local stack, as it actually stands
+
+| Component | Version | Where |
+|---|---|---|
+| PHP | 8.5.12 | `C:\php85` — one install, used by CLI, dev server, tests **and** Apache |
+| MariaDB | 10.11.19 LTS | `C:\xampp\mysql` — supported to 2028-02-16 |
+| Apache | 2.4.58 (Apache Lounge VS17) | `C:\xampp\apache` — repointed at `C:\php85` |
+| phpMyAdmin | 5.2.3 | `C:\xampp\phpMyAdmin` |
+
+There is deliberately **one** PHP install, not two. XAMPP's Apache was
+repointed at `C:\php85` in `conf\extra\httpd-xampp.conf` (`LoadModule
+php_module`, `PHPINIDir`, and the `/php-cgi/` `ScriptAlias`, which otherwise
+kept the retired 8.2.12 binary reachable over HTTP). One PHP means one thing
+to patch next time.
+
+Retired, kept for rollback and safe to delete once you are confident:
+`C:\xampp\mysql-10.4.32-retired` (including its original data directory),
+`C:\xampp\phpMyAdmin-5.2.1-retired`, and XAMPP's now-unused `C:\xampp\php`.
+
+> **`extension_dir` must be absolute.** It is `C:/php85/ext`, not `ext`. A
+> relative value resolves against the *process* working directory, so it works
+> for the CLI and silently fails under Apache — the symptom is phpMyAdmin
+> reporting "the mysqli extension is missing".
+
+> **curl does not load under Apache's `mod_php`.** `php_curl.dll` links
+> against PHP's OpenSSL 3.5.9 while Apache 2.4.58 ships its own copy of
+> `libssl-3-x64.dll` for `mod_ssl`, and Windows resolves DLLs by name for the
+> whole process. Preloading PHP's copies with `LoadFile` stops Apache booting
+> altogether. This costs nothing today — phpMyAdmin does not need curl, and the
+> application runs on `php -S` where curl works normally. If DFMIS is ever
+> served through Apache, use FastCGI (`php-cgi.exe` is its own process with its
+> own OpenSSL), not `LoadFile`.
+
+> **`register_argc_argv` must stay `Off`.** PHP 8.5 deprecates deriving
+> `$_SERVER['argv']` from the query string, so turning it on prints a
+> deprecation on *every* web request. The CLI populates `$argv` regardless of
+> this setting, so the CLI tooling is unaffected.
 
 > **Windows note:** PHP 8.5 builds are linked against the Visual C++ 2015–2022
 > runtime 14.44 or newer. An older runtime fails hard — PHP refuses to start

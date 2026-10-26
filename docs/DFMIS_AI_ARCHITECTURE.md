@@ -51,11 +51,13 @@ Audited from source. The roadmap was not trusted.
 2. **PDF text is not extractable** — `stored_files` stores PDFs but no parser exists, and adding one
    is a dependency this phase does not justify. This determined that the knowledge pipeline ingests
    **text a person actually supplied** (§5).
-3. **MariaDB 10.4.32 supports InnoDB `FULLTEXT`** (probed directly). That makes genuine
-   relevance-ranked retrieval possible with **no vector database**, which the brief asks us not to
-   introduce unless the scope requires it.
+3. **MariaDB supports InnoDB `FULLTEXT`** (probed directly on 10.4.32 when this was designed, and
+   re-probed on 10.11.19 after the engine upgrade — the index survives and `MATCH … AGAINST` runs).
+   That makes genuine relevance-ranked retrieval possible with **no vector database**, which the
+   brief asks us not to introduce unless the scope requires it.
 4. **`innodb_ft_min_token_size = 3`** — so short queries can miss through the index. A scored LIKE
-   fallback was warranted, not defensive bloat.
+   fallback was warranted, not defensive bloat. Still 3 on 10.11.19, so the fallback is still
+   earning its place.
 5. **`EngineeringToolingTest` only scanned `APP_|DB_|ANTHROPIC_` prefixes** in `.env.example`. A new
    `AI_` variable would have escaped the secret scan; the prefix list was widened.
 
