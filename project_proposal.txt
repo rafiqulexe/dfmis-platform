@@ -32,20 +32,17 @@ The original university requirements remain useful as the
 foundation and demonstration scope, but they are no longer the
 quality, architecture, or product ceiling.
 
-Do NOT throw away the existing project.
+The existing project is neither discarded nor rebuilt from scratch.
+It is evolved, under the following method:
 
-Do NOT blindly rebuild everything.
-
-Instead:
-
-1. Audit the current implementation against this master proposal.
-2. Preserve working functionality.
-3. Preserve good architectural decisions.
-4. Identify architectural conflicts.
-5. Fix foundational problems before they become expensive.
-6. Continue development incrementally.
-7. Do not introduce unnecessary complexity.
-8. Do not build future SaaS features before they are needed.
+1. The current implementation is audited against this specification.
+2. Working functionality is preserved.
+3. Sound architectural decisions are preserved.
+4. Architectural conflicts are identified explicitly.
+5. Foundational problems are fixed before they become expensive.
+6. Development proceeds incrementally.
+7. Complexity is not added without a demonstrated need.
+8. Future SaaS features are not built before they are needed.
 
 The goal is:
 
@@ -192,7 +189,7 @@ Organization
 → Greenhouse/Zone
 → Crop
 
-Do not force all farm types into the same specialized data model.
+Farm types are never forced into the same specialized data model.
 
 ============================================================
 4. SAAS BUSINESS MODEL
@@ -222,9 +219,10 @@ The platform should eventually support:
 - integrations
 - API access
 
-DO NOT build the complete billing/subscription system now.
+The complete billing and subscription system is not built at
+this stage.
 
-But the core architecture must not prevent it.
+The core architecture must not prevent it.
 
 ============================================================
 5. INITIAL CUSTOMER / TENANT
@@ -236,7 +234,7 @@ Current farm:
 
 Green Valley Dairy Farm
 
-Treat this as the initial tenant.
+This is the initial tenant.
 
 The current interface may remain focused on this farm.
 
@@ -263,9 +261,9 @@ Organization C
 
 Tenant isolation is a FIRST-CLASS SECURITY REQUIREMENT.
 
-Do not postpone tenant isolation until all modules are built.
+Tenant isolation is not postponed until all modules are built.
 
-Evaluate and implement the minimum appropriate foundation now.
+The minimum appropriate foundation is evaluated and implemented now.
 
 Potential structure:
 
@@ -284,15 +282,15 @@ have different permissions across farms.
 The exact implementation should be selected based on the current
 codebase and future scalability requirements.
 
-Do not over-engineer.
+The design does not over-engineer.
 
-Do not create unnecessary abstractions.
+Unnecessary abstractions are not created.
 
 ============================================================
 7. TENANT CONTEXT
 ============================================================
 
-Create a centralized and secure mechanism for determining:
+A centralized and secure mechanism determines:
 
 current user
 current organization
@@ -303,7 +301,7 @@ permissions
 
 Tenant context must be determined server-side.
 
-Do NOT trust:
+The following are never trusted:
 
 - URL parameters
 - hidden fields
@@ -491,7 +489,7 @@ Analytics:
 - egg production
 - flock performance
 
-Do NOT implement immediately unless required.
+This is not implemented immediately unless required.
 
 Architecture must allow it later.
 
@@ -528,7 +526,7 @@ Potential environmental metrics:
 - salinity
 - other sensor data
 
-Do not fabricate real-time sensor data.
+Real-time sensor data is never fabricated.
 
 ============================================================
 13. CROP MODULE
@@ -610,7 +608,7 @@ VEGETABLE
 FRUIT
 etc.
 
-Do not hardcode the entire application around one farm type.
+The application is never hardcoded around one farm type.
 
 The dashboard and navigation should eventually adapt based on
 the farm's configuration.
@@ -697,9 +695,9 @@ The dashboard should prioritize:
 - upcoming events
 - AI insights
 
-Avoid a wall of equal-sized cards.
+A wall of equal-sized cards is avoided.
 
-Use hierarchy.
+Hierarchy carries the layout.
 
 ============================================================
 18. FARM-TYPE-AWARE DASHBOARD
@@ -862,7 +860,7 @@ If image quality is insufficient:
 
 say so.
 
-Do not fabricate confidence.
+Confidence is never fabricated.
 
 ============================================================
 22. AI FARM ADVISOR
@@ -890,9 +888,9 @@ Initial deterministic/rule-based analytics are acceptable.
 
 LLM narrative should be layered on top later.
 
-Do not replace reliable calculations with an LLM.
+Reliable calculations are never replaced by an LLM.
 
-Use real database data.
+Real database data is the only source.
 
 Never fabricate statistics.
 
@@ -950,9 +948,9 @@ This will eventually support:
 - customer billing
 - abuse prevention
 
-Do not build AI billing yet.
+AI billing is not built yet.
 
-Prepare the architecture now.
+The architecture is prepared for it now.
 
 ============================================================
 25. MILK PRODUCTION INTELLIGENCE
@@ -1102,7 +1100,7 @@ Create configurable thresholds.
 
 Future architecture should support IoT.
 
-Do not fake live data.
+Live data is never faked.
 
 ============================================================
 32. FINANCE
@@ -1445,9 +1443,9 @@ Spline
 Shader/WebGL
 Icons8
 
-Use them selectively.
+They are used selectively.
 
-Do not add heavy animation where it provides no value.
+Heavy animation is not added where it provides no value.
 
 Support:
 
@@ -1475,7 +1473,7 @@ caching
 
 Animation and WebGL must not cause memory leaks.
 
-Do not sacrifice performance for visual effects.
+Performance is never sacrificed for visual effects.
 
 ============================================================
 45. RESPONSIVE DESIGN
@@ -1492,7 +1490,7 @@ Support:
 1280px
 1440px+
 
-Do not simply shrink desktop.
+Mobile is not a shrunken desktop layout.
 
 Mobile should have intentionally redesigned hierarchy.
 
@@ -1530,9 +1528,9 @@ Empty
 Error
 Success
 
-Do not leave blank screens.
+Blank screens are never left in place.
 
-Create professional skeleton states and helpful messages.
+Professional skeleton states and helpful messages take their place.
 
 ============================================================
 48. GLOBAL PRODUCT EXPERIENCE
@@ -1556,7 +1554,7 @@ No disconnected pages.
 49. FUTURE SAAS PLANS
 ============================================================
 
-Do not hardcode pricing.
+Pricing is never hardcoded.
 
 Future architecture should support:
 
@@ -1606,7 +1604,7 @@ The value should come from:
 - automation foundation
 - priority support
 
-Do not claim guaranteed financial returns.
+Guaranteed financial returns are never claimed.
 
 The product should demonstrate measurable operational value.
 
@@ -1629,9 +1627,9 @@ cancellations
 renewals
 billing history
 
-Do NOT implement now unless specifically requested.
+This is not implemented now unless specifically requested.
 
-Do not hardcode pricing into core business logic.
+Pricing is never hardcoded into core business logic.
 
 ============================================================
 52. PLATFORM ADMIN — FUTURE
@@ -1668,7 +1666,7 @@ Sign Up
 → Choose Modules
 → Start Using DFMIS
 
-Do not implement full onboarding yet unless required.
+Full onboarding is not implemented yet unless required.
 
 ============================================================
 54. API / INTEGRATIONS — FUTURE
@@ -1687,15 +1685,15 @@ Weather APIs
 Government/agricultural systems
 Third-party software
 
-Do not build fake integrations.
+Fake integrations are never built.
 
 ============================================================
 55. DEVELOPMENT PHILOSOPHY
 ============================================================
 
-DO NOT try to build everything at once.
+The platform is never built all at once.
 
-Use phases.
+Work proceeds in phases.
 
 PHASE 0
 Foundation
@@ -1812,9 +1810,9 @@ Production
 
 The existing implementation is already underway.
 
-Do NOT restart the project.
+The project is not restarted.
 
-Do NOT unnecessarily rewrite completed work.
+Completed work is not rewritten unnecessarily.
 
 Current progress includes:
 
@@ -1860,7 +1858,7 @@ Specifically review:
 - AI
 - permissions
 
-Do NOT allow unscoped reads to become long-term SaaS security debt.
+Unscoped reads must not become long-term SaaS security debt.
 
 Classify:
 
@@ -1869,9 +1867,9 @@ FARM-SCOPED
 ORGANIZATION-SCOPED
 SYSTEM-WIDE
 
-Fix security-critical isolation now.
+Security-critical isolation is fixed now.
 
-Do not unnecessarily rewrite every module.
+Modules are not rewritten wholesale.
 
 ============================================================
 58. CURRENT FIRST VERTICAL
@@ -1888,7 +1886,7 @@ However:
 
 The surrounding platform must remain generic.
 
-Do not introduce unnecessary cow-specific assumptions into:
+Cow-specific assumptions are never introduced into:
 
 authentication
 organizations
@@ -1919,7 +1917,7 @@ PERFORMANCE
 
 review.
 
-Do not stop at:
+The standard is not:
 
 "It works."
 
@@ -2033,46 +2031,35 @@ AUDIT
 → PERFORMANCE QA
 → ITERATE
 
-Do not implement dozens of unrelated features in one uncontrolled
-change.
+Dozens of unrelated features are never delivered in a single
+uncontrolled change.
 
-Build one excellent reference experience first.
-
-Then propagate the design system.
+One excellent reference experience is built first. The design
+system is then propagated outward from it.
 
 ============================================================
-64. FINAL INSTRUCTION
+64. GOVERNING STATUS OF THIS DOCUMENT
 ============================================================
 
-Now treat this document as the MASTER PRODUCT SPECIFICATION for
-DFMIS.
+This document is the master product specification for DFMIS.
 
-DO NOT restart the project.
+The project is not restarted. Existing working functionality is
+not deleted. The application is not rewritten wholesale.
 
-DO NOT delete existing working functionality.
-
-DO NOT blindly rewrite the application.
-
-First compare the current implementation against this specification.
-
-Give me a concise:
-
-MASTER GAP ANALYSIS
-
-containing:
+Each phase begins by comparing the current implementation against
+this specification and recording a concise gap analysis covering:
 
 1. What already satisfies the specification
 2. What partially satisfies it
-3. What conflicts with the new architecture
+3. What conflicts with the target architecture
 4. What must be fixed immediately
 5. What can wait
-6. What should NOT be built yet
-7. Recommended next implementation phase
+6. What is deliberately not built yet
+7. The recommended next implementation phase
 
-Then make only the necessary foundational corrections.
-
-After the architecture is confirmed, continue with the current
-planned implementation.
+Only the foundational corrections that analysis identifies are
+made. Once the architecture is confirmed, planned implementation
+continues from there.
 
 The immediate priority remains:
 
