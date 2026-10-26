@@ -131,8 +131,12 @@ echo "Refreshed alert timestamps.\n";
 // tested from one direction.
 $rivalHash = password_hash('rival123', PASSWORD_BCRYPT);
 $stmt = $conn->prepare(
-    "INSERT INTO admin_users (username, password_hash, role) VALUES ('rival', ?, 'staff')
-     ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash)"
+    // farm_id stated explicitly — migration 005 removed its default (T-2), and
+    // omitting it only ever "worked" because the development database runs
+    // without STRICT_TRANS_TABLES. rival belongs to farm 2, set up just below.
+    "INSERT INTO admin_users (username, password_hash, role, farm_id) VALUES ('rival', ?, 'staff', 2)
+     ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash),
+                             farm_id = VALUES(farm_id)"
 );
 $stmt->execute([$rivalHash]);
 
@@ -157,8 +161,15 @@ if ($rivalId) {
 // farm_users row. It must render a handled "no farm assigned" page, not crash.
 $orphanHash = password_hash('orphan123', PASSWORD_BCRYPT);
 $stmt = $conn->prepare(
-    "INSERT INTO admin_users (username, password_hash, role) VALUES ('orphan', ?, 'staff')
-     ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash)"
+    // farm_id stated explicitly for the same reason as rival above. The value
+    // is 1 and carries NO meaning: orphan's whole purpose is to have no farm,
+    // and that is expressed by the deliberate ABSENCE of farm_users and
+    // organization_users rows below — which is what the application actually
+    // reads. admin_users.farm_id is vestigial and NOT NULL, so it needs some
+    // value; what it must not be is silently defaulted.
+    "INSERT INTO admin_users (username, password_hash, role, farm_id) VALUES ('orphan', ?, 'staff', 1)
+     ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash),
+                             farm_id = VALUES(farm_id)"
 );
 $stmt->execute([$orphanHash]);
 $orphanId = $conn->query("SELECT admin_id FROM admin_users WHERE username = 'orphan'")->fetchColumn();

@@ -31,9 +31,26 @@ $farmRoleOverrides = [
 
 $conn = getDBConnection();
 
+// farm_id is supplied explicitly, and must be.
+//
+// Migration 005 drops `DEFAULT 1` from every farm_id (baseline finding T-2) so
+// that forgetting the tenant key is a loud error rather than a silent write
+// into farm 1. This INSERT used to omit it and survived only because the
+// development database runs without STRICT_TRANS_TABLES: MariaDB substituted 0
+// and warned. That is the exact failure T-2 exists to prevent, and it is how
+// the rival and orphan fixtures ended up pointing at farm 0, which does not
+// exist. Under a stock MariaDB — CI's, and most production ones — it is fatal.
+//
+// The column itself is vestigial: nothing in the application reads it, because
+// migration 003 moved tenant membership to farm_users. It is still NOT NULL, so
+// a value is required; these accounts are seeded as members of farm 1 below, so
+// 1 is the truthful one. It is included in the UPDATE clause as well, so
+// re-running this script repairs rows written before this fix.
 $stmt = $conn->prepare(
-    "INSERT INTO admin_users (username, password_hash, role) VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), role = VALUES(role)"
+    "INSERT INTO admin_users (username, password_hash, role, farm_id) VALUES (?, ?, ?, 1)
+     ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash),
+                             role = VALUES(role),
+                             farm_id = VALUES(farm_id)"
 );
 
 foreach ($accounts as $account) {
