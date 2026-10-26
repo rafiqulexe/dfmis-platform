@@ -155,15 +155,35 @@ jobs:
         run: php tools/test-db.php --create
 
       - name: Verify the test database is isolated
-        # Guards against the isolation silently regressing: the two schemas must
-        # be distinct, and the guard must refuse the development database.
+        # Asserts BOTH directions, which is what makes this a real check:
+        # the guard must approve dfms_test and must REFUSE dfms.
+        #
+        # The earlier version of this step ran a single check and inherited the
+        # job-level DB_NAME=dfms, so it asked the guard to approve the
+        # DEVELOPMENT database and failed when the guard correctly refused —
+        # the rail working as designed, reported as a broken build. DB_NAME is
+        # now set per invocation instead of inherited.
         run: |
-          php -r '
+          set -e
+
+          echo "--- the guard must APPROVE the test database ---"
+          DB_NAME=dfms_test php -r '
             require "tests/bootstrap.php";
             [$safe, $reason] = dfms_test_database_is_safe();
-            if (!$safe) { fwrite(STDERR, "Test DB not approved: $reason\n"); exit(1); }
-            echo "Test database approved: $reason\n";
+            if (!$safe) { fwrite(STDERR, "FAIL: dfms_test was not approved: $reason\n"); exit(1); }
+            echo "ok: $reason\n";
           '
+
+          echo "--- the guard must REFUSE the development database ---"
+          DB_NAME=dfms php -r '
+            require "tests/bootstrap.php";
+            [$safe, $reason] = dfms_test_database_is_safe();
+            if ($safe) { fwrite(STDERR, "FAIL: the development database was approved as a test database: $reason\n"); exit(1); }
+            echo "ok, correctly refused: $reason\n";
+          '
+
+          echo "--- and the two schemas must actually be distinct ---"
+          test "$(mysql -h 127.0.0.1 -u root -p"$DB_PASS" -N -B -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='dfms_test'")" -gt 0
 
       # ---- unit tests: still no server needed ------------------------------
 

@@ -44,10 +44,23 @@
     <php>
         <!-- Tests must never reach the development database. tests/bootstrap.php
              enforces this for anything destructive; this makes the intent
-             explicit for the whole suite. -->
-        <env name="DFMS_ENV" value="testing"/>
-        <env name="DB_NAME" value="dfms_test"/>
-        <env name="APP_ENV" value="testing"/>
+             explicit for the whole suite.
+
+             force="true" is NOT decoration. Without it PHPUnit leaves an
+             existing environment variable alone, so any environment that
+             already exports DB_NAME wins — and CI exports DB_NAME=dfms at the
+             job level for the migration and seeding steps. The suite therefore
+             ran against the DEVELOPMENT database the moment it moved to CI,
+             which is the one thing this block exists to prevent. Reproduced
+             locally with `DB_NAME=dfms vendor/bin/phpunit`: four
+             TestEnvironmentSafetyTest assertions fail, correctly reporting
+             that the connected database is not a test database.
+
+             These values must win over both .env and the process environment,
+             so every one of them is forced. -->
+        <env name="DFMS_ENV" value="testing" force="true"/>
+        <env name="DB_NAME" value="dfms_test" force="true"/>
+        <env name="APP_ENV" value="testing" force="true"/>
 
         <!-- Provider credentials are pinned EMPTY so the unit suite never
              depends on whether the developer running it happens to have a key
@@ -59,8 +72,8 @@
              variables the environment has not already set, and an empty string
              is set. No real AI call is possible from the unit suite either
              way; every provider in it is a stub. -->
-        <env name="AI_PROVIDER" value="anthropic"/>
-        <env name="ANTHROPIC_API_KEY" value=""/>
-        <env name="GEMINI_API_KEY" value=""/>
+        <env name="AI_PROVIDER" value="anthropic" force="true"/>
+        <env name="ANTHROPIC_API_KEY" value="" force="true"/>
+        <env name="GEMINI_API_KEY" value="" force="true"/>
     </php>
 </phpunit>
