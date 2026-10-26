@@ -580,7 +580,7 @@ Items 1–4 are the minimum before any new feature work. Item 8 is the minimum b
 
 **Docs / config (6):** `ARCHITECTURE.md`, `project_structure.md`,
 `project_proposal.txt`, `.env.example`, `.gitignore`, `storage/.htaccess`,
-`storage/.gitignore`, `.claude/launch.json`
+`storage/.gitignore`
 
 **Total: 7,572 lines of application source across 24 PHP, 4 SQL, 1 JS, 1 CSS file.**
 
@@ -590,7 +590,7 @@ Items 1–4 are the minimum before any new feature work. Item 8 is the minimum b
 
 ```bash
 # Discovery
-find . -type f -not -path "./.claude/*"
+find . -type f -not -path "./vendor/*"
 wc -l <all source files>
 grep -rn "auditLog|ai_service|storage.php|switchFarm|farm_id = ?" --include=*.php .
 

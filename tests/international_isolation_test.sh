@@ -34,6 +34,22 @@ check_absent()  { grep -qi "$3" "$2" && bad "$1" "leaked '$3'" || ok "$1"; }
 check_present() { grep -qi "$3" "$2" && ok "$1" || bad "$1" "expected to find '$3'"; }
 section() { echo ""; echo "== $1 =="; }
 
+# Literal (non-regex) variants, for needles read from the database rather than
+# written in this file.
+absent_literal()  { grep -Fqi "$3" "$2" && bad "$1" "leaked '$3'" || ok "$1"; }
+present_literal() { grep -Fqi "$3" "$2" && ok "$1" || bad "$1" "expected to find '$3'"; }
+
+# Tenant 1's own names, read from the running application. This suite runs
+# against the DEVELOPMENT database, where an operator may rename their farm or
+# organization through the UI at any time; hardcoding the seed names turns an
+# ordinary rename into a false isolation failure.
+# The value attribute sits on the line after the id, so the markup is flattened
+# before matching. The name comes back HTML-escaped, which is correct: it is
+# compared against rendered pages.
+settings_name_of() { # settings_name_of <url> <cookiejar>
+    curl -s -b "$2" "$1" | tr '\n' ' ' | sed -n 's/.*id="name"[^>]*value="\([^"]*\)".*/\1/p' | head -1
+}
+
 assert_logged_in() {
     local code
     code=$(curl -s -b "$2" -o /dev/null -w "%{http_code}" "$BASE/dashboard.php")
@@ -76,13 +92,20 @@ section "Cross-ORGANIZATION settings isolation"
 # ============================================================================
 # rival owns organization 2. Their settings page must show THEIR organization
 # and never organization 1's name or configuration.
+ORG1=$(settings_name_of "$BASE/modules/settings/organization.php" "$ADMIN")
+FARM1=$(settings_name_of "$BASE/modules/settings/farm.php" "$ADMIN")
+[ -n "$ORG1" ]  && ok "organization 1 names itself ($ORG1)" \
+                || bad "organization 1 names itself" "no name rendered on the org settings page"
+[ -n "$FARM1" ] && ok "farm 1 names itself ($FARM1)" \
+                || bad "farm 1 names itself" "no name rendered on the farm settings page"
+
 curl -s -b "$RIVAL" -o "$TMP/rivalorg.html" "$BASE/modules/settings/organization.php"
-check_absent  "rival's org page does not show org 1's name" "$TMP/rivalorg.html" "Green Valley Dairy Group"
-check_present "rival's org page shows their own org"        "$TMP/rivalorg.html" "Rival Holdings"
+absent_literal "rival's org page does not show org 1's name" "$TMP/rivalorg.html" "$ORG1"
+check_present  "rival's org page shows their own org"        "$TMP/rivalorg.html" "Rival Holdings"
 
 curl -s -b "$ADMIN" -o "$TMP/adminorg.html" "$BASE/modules/settings/organization.php"
-check_absent  "admin's org page does not show org 2's name" "$TMP/adminorg.html" "Rival Holdings"
-check_present "admin's org page shows their own org"        "$TMP/adminorg.html" "Green Valley Dairy Group"
+check_absent   "admin's org page does not show org 2's name" "$TMP/adminorg.html" "Rival Holdings"
+present_literal "admin's org page shows their own org"       "$TMP/adminorg.html" "$ORG1"
 
 # A write from rival must land on organization 2 only. The organization id is
 # never read from the request, so there is no parameter to tamper with — this
@@ -111,8 +134,8 @@ check_present "rival's own org received the write" "$TMP/rivalorgafter.html" 'va
 section "Cross-FARM settings isolation"
 # ============================================================================
 curl -s -b "$RIVAL" -o "$TMP/rivalfarm.html" "$BASE/modules/settings/farm.php"
-check_absent  "rival's farm page does not show farm 1"  "$TMP/rivalfarm.html" "Green Valley Dairy Farm"
-check_present "rival's farm page shows their own farm"  "$TMP/rivalfarm.html" "Rival Farm"
+absent_literal "rival's farm page does not show farm 1" "$TMP/rivalfarm.html" "$FARM1"
+check_present  "rival's farm page shows their own farm" "$TMP/rivalfarm.html" "Rival Farm"
 
 # A crafted farm_id must not redirect the write to another farm.
 RTOKEN=$(csrf_for "$BASE/modules/settings/farm.php" "$RIVAL")

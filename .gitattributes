@@ -1,0 +1,23 @@
+# Line-ending policy.
+#
+# Everything is stored in the repository with LF. Without this file, a clone on
+# a machine with core.autocrlf=true checks the shell suites out with CRLF, and
+# bash then fails on the carriage return — the test runner breaks on a fresh
+# clone for a reason that has nothing to do with the code.
+* text=auto eol=lf
+
+# Scripts that are executed, not just read. These must be LF everywhere.
+*.sh text eol=lf
+*.php text eol=lf
+
+# Declared explicitly so Git never attempts end-of-line conversion on them.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.woff binary
+*.woff2 binary

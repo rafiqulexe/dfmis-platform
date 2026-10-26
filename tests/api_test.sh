@@ -42,6 +42,18 @@ json_field() { # json_field <file> <key>
     sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"\{0,1\}\([^\",}]*\)\"\{0,1\}.*/\1/p" "$1" | head -1
 }
 
+# Nested reader for the keys json_field cannot reach, because "name" occurs
+# once per object and the first hit is the farm's.
+json_nested() { # json_nested <file> <object> <key>
+    php -r '$d = json_decode(file_get_contents($argv[1]), true);
+            echo $d["data"][$argv[2]][$argv[3]] ?? "";' "$1" "$2" "$3"
+}
+
+# Literal (non-regex) variants, for needles that come from the database rather
+# than from this file.
+present_literal() { grep -Fq "$3" "$2" && ok "$1" || bad "$1" "expected to find '$3' in $(head -c 200 "$2")"; }
+absent_literal()  { grep -Fqi "$3" "$2" && bad "$1" "leaked '$3'" || ok "$1"; }
+
 ADMIN="$TMP/admin.txt";  login admin admin123 "$ADMIN"
 RIVAL="$TMP/rival.txt";  login rival rival123 "$RIVAL"
 ORPHAN="$TMP/orphan.txt"; login orphan orphan123 "$ORPHAN"
@@ -144,20 +156,30 @@ check_status "membership-less user refused settings" "$CODE" "403"
 # ============================================================================
 section "Tenant isolation — the API must not be a way around it"
 # ============================================================================
+# Tenant 1's names are READ FROM THE APPLICATION, not hardcoded. This suite
+# runs against the development database, where an operator may rename their own
+# farm or organization through the UI at any time. A renamed tenant is not an
+# isolation failure, and a suite that reports it as one hides the real ones.
 curl -s -b "$ADMIN" -o "$TMP/admin_me.json" "$API/v1/me"
-check_present "admin sees their own organization" "$TMP/admin_me.json" "Green Valley Dairy Group"
+ORG1=$(json_nested "$TMP/admin_me.json" organization name)
+FARM1=$(json_nested "$TMP/admin_me.json" farm name)
+[ -n "$ORG1" ] && ok "admin sees their own organization ($ORG1)" \
+                || bad "admin sees their own organization" "no organization name in $(head -c 200 "$TMP/admin_me.json")"
+[ -n "$FARM1" ] && ok "admin sees their own farm ($FARM1)" \
+                 || bad "admin sees their own farm" "no farm name in $(head -c 200 "$TMP/admin_me.json")"
+check_present "admin's organization reports their role" "$TMP/admin_me.json" '"role":"owner"'
 check_absent  "admin sees nothing of org 2"       "$TMP/admin_me.json" "Rival Holdings"
 
 curl -s -b "$RIVAL" -o "$TMP/rival_me.json" "$API/v1/me"
-check_present "rival sees their own organization" "$TMP/rival_me.json" "Rival Holdings"
-check_absent  "rival sees nothing of org 1"       "$TMP/rival_me.json" "Green Valley Dairy Group"
-check_absent  "rival sees nothing of farm 1"      "$TMP/rival_me.json" "Green Valley Dairy Farm"
+check_present  "rival sees their own organization" "$TMP/rival_me.json" "Rival Holdings"
+absent_literal "rival sees nothing of org 1"       "$TMP/rival_me.json" "$ORG1"
+absent_literal "rival sees nothing of farm 1"      "$TMP/rival_me.json" "$FARM1"
 
 # Crafted identifiers must be ignored: the API reads tenant context from the
 # session, never from the request, so there is no parameter to pivot on.
 curl -s -b "$RIVAL" -o "$TMP/rival_craft.json" "$API/v1/me?farm_id=1&organization_id=1&admin_id=1"
-check_absent  "crafted farm_id does not cross tenants"  "$TMP/rival_craft.json" "Green Valley Dairy Farm"
-check_absent  "crafted org_id does not cross tenants"   "$TMP/rival_craft.json" "Green Valley Dairy Group"
+absent_literal "crafted farm_id does not cross tenants"  "$TMP/rival_craft.json" "$FARM1"
+absent_literal "crafted org_id does not cross tenants"   "$TMP/rival_craft.json" "$ORG1"
 check_present "crafted request still returns own data"  "$TMP/rival_craft.json" "Rival"
 
 curl -s -b "$RIVAL" -o "$TMP/rival_settings.json" "$API/v1/settings"

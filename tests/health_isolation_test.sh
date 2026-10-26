@@ -274,13 +274,28 @@ check_absent "a blank withdrawal creates no restriction" "$TMP/wd2.html" "No wit
 # ============================================================================
 section "Alerts — no duplicates from repeated page loads"
 # ============================================================================
+# Measured as a DELTA, not a total. The first load is allowed to create the
+# alert; the point is that later loads create nothing. A total would also count
+# alerts left behind by earlier runs of this suite — the test database is
+# seeded once and keeps its alert history — and would eventually fail for a
+# reason that has nothing to do with deduplication.
+count_withdrawal_alerts() {
+    curl -s -b "$ADMIN" -o "$1" "$BASE/modules/alerts/"
+    grep -o "Withdrawal period ending" "$1" | wc -l | tr -d ' '
+}
+
+curl -s -b "$ADMIN" -o /dev/null "$BASE/modules/health/"
+BEFORE=$(count_withdrawal_alerts "$TMP/alerts_before.html")
+
 for _ in 1 2 3; do curl -s -b "$ADMIN" -o /dev/null "$BASE/modules/health/"; done
-curl -s -b "$ADMIN" -o "$TMP/alerts.html" "$BASE/modules/alerts/"
-DUPES=$(grep -o "Withdrawal period ending" "$TMP/alerts.html" | wc -l | tr -d ' ')
-if [ "$DUPES" -le 2 ]; then
-    ok "repeated health page loads did not spam alerts (found $DUPES)"
+AFTER=$(count_withdrawal_alerts "$TMP/alerts.html")
+
+if [ "$BEFORE" -ge 1 ] && [ "$AFTER" -eq "$BEFORE" ]; then
+    ok "repeated health page loads did not spam alerts (held at $BEFORE across 3 more syncs)"
+elif [ "$BEFORE" -lt 1 ]; then
+    bad "the withdrawal alert was raised at all" "no 'Withdrawal period ending' row after a health page load"
 else
-    bad "alert deduplication" "found $DUPES 'Withdrawal period ending' rows after 3 syncs"
+    bad "alert deduplication" "rows went from $BEFORE to $AFTER across 3 repeat syncs"
 fi
 
 # ============================================================================

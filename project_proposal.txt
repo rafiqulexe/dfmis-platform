@@ -2019,49 +2019,7 @@ NOT:
 A cow application that later tries to become a farm platform.
 
 ============================================================
-63. CLAUDE CODE OPERATING INSTRUCTIONS
-============================================================
-
-You are responsible for making professional engineering and
-product decisions.
-
-Do not ask me about trivial implementation decisions.
-
-Use your judgment.
-
-However, if you need:
-
-- MCP
-- Claude Code skill
-- browser automation
-- Figma
-- design system
-- animation library
-- external API
-- AI provider
-- image generation
-- database tool
-- testing tool
-- deployment service
-- payment provider
-
-and it is not currently available:
-
-STOP AND ASK ME.
-
-Explain:
-
-1. What you need
-2. Why it is needed
-3. What it improves
-4. Whether it is required or optional
-
-Do not silently create an inferior workaround.
-
-Use available skills and MCPs proactively.
-
-============================================================
-64. IMPLEMENTATION RULE
+63. IMPLEMENTATION RULE
 ============================================================
 
 Before every major phase:
@@ -2083,7 +2041,7 @@ Build one excellent reference experience first.
 Then propagate the design system.
 
 ============================================================
-65. FINAL INSTRUCTION
+64. FINAL INSTRUCTION
 ============================================================
 
 Now treat this document as the MASTER PRODUCT SPECIFICATION for

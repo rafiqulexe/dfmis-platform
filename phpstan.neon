@@ -57,7 +57,7 @@ parameters:
         analyseAndScan:
             - vendor
             - storage
-            - .claude
+            - .phpunit.cache
 
     # PHP version the code actually runs on, so PHPStan reasons about the right
     # standard library signatures and deprecations.

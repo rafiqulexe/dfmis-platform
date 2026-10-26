@@ -73,7 +73,7 @@ while IFS= read -r file; do
         echo "  FAIL  $file"
         "$PHP" -l "$file" 2>&1 | head -3
     fi
-done < <(find "$ROOT" -name "*.php" -not -path "*/.claude/*" -not -path "*/vendor/*")
+done < <(find "$ROOT" -name "*.php" -not -path "*/.git/*" -not -path "*/vendor/*")
 echo "  clean: $LINT_OK   failing: $LINT_FAIL"
 record "syntax check" "$LINT_FAIL"
 

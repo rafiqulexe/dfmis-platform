@@ -24,7 +24,7 @@ $quiet = in_array('--quiet', $argv, true);
 
 // Directories that contain PHP we did not write, or that are not part of the
 // application. vendor/ is third-party and its lint status is not ours to fix.
-$skip = ['/vendor/', '/.git/', '/.claude/', '/node_modules/'];
+$skip = ['/vendor/', '/.git/', '/node_modules/'];
 
 $iterator = new RecursiveIteratorIterator(
     new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)

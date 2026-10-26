@@ -6,10 +6,11 @@ Thumbs.db
 .env
 .env.local
 
-# Claude Code session-local state and global skill bundle (tooling, not project content)
-.claude/settings.local.json
-.claude/scheduled_tasks.lock
-.claude/skills/
+# Local editor / tooling state — machine-specific, never project content
+.claude/
+.agents/
+.vscode/
+.idea/
 
 # Composer dependencies. composer.lock IS committed (this is an application,
 # not a library — every environment must resolve identical versions), but the
