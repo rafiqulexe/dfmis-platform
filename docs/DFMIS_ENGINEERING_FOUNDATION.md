@@ -312,7 +312,7 @@ changes in noise and produce a diff nobody can review.
 `.github/workflows/ci.yml` — push, PR and manual dispatch.
 
 ```
-checkout → PHP 8.2 AND 8.5 (matrix) → cache vendor → composer install
+checkout → PHP 8.3 AND 8.5 (matrix) → cache vendor → composer install
         → lint → PHPStan
         → MariaDB service → schema → migrations → idempotency check
         → seed → create dfms_test

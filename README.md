@@ -103,7 +103,7 @@ foreign keys to no functional gain — new code says *animal*.
 
 | | |
 |---|---|
-| PHP | 8.2 minimum, 8.5 recommended (developed on 8.5.12) |
+| PHP | 8.3 minimum, 8.5 recommended (developed on 8.5.12) |
 | Database | **MariaDB** 10.11 LTS — not MySQL; migrations 002–004 use MariaDB-only syntax |
 | Dependencies | **None at runtime.** Composer carries dev tooling only |
 | Dev tooling | PHPUnit 10.5, PHPStan 2.3 (level 5) |

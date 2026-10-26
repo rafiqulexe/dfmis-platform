@@ -11,7 +11,7 @@ variable name is given and the value is left to your own `.env`.
 
 | Requirement | Version | Notes |
 |---|---|---|
-| **PHP** | 8.2 minimum, **8.5 recommended** (developed on 8.5.12) | Extensions: `pdo_mysql`, `mbstring`, `curl`, `fileinfo`, `json`, `openssl`. `zip` is needed by Composer. Do **not** enable `intl` — see [The intl extension](#the-intl-extension). |
+| **PHP** | 8.3 minimum, **8.5 recommended** (developed on 8.5.12) | Extensions: `pdo_mysql`, `mbstring`, `curl`, `fileinfo`, `json`, `openssl`. `zip` is needed by Composer. Do **not** enable `intl` — see [The intl extension](#the-intl-extension). |
 | **MariaDB** | **10.11 LTS** (developed on 10.11.19) | **MariaDB, not MySQL** — migrations 002–004 are raw SQL written against it. Matches the `mariadb:10.11` image CI uses. See [Database engine](#database-engine). |
 | **Composer** | 2.x | Dev tooling only; the application has no runtime dependencies. |
 | **bash + curl** | any | The integration suites are shell scripts. Git Bash is fine on Windows. |

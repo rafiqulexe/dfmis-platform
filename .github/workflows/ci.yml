@@ -44,13 +44,22 @@ jobs:
       fail-fast: false
       matrix:
         # 8.5 is the runtime development and static analysis target.
-        # 8.2 is the floor composer.json declares — and a declared floor that
+        # 8.3 is the floor composer.json declares — and a declared floor that
         # nothing exercises is a guess, not a guarantee.
         #
-        # PHP 8.2 leaves security support on 2026-12-31. When it does, raise
-        # the floor here, in composer.json's require and in its platform pin
-        # together; they are one decision expressed in three places.
-        php: ['8.2', '8.5']
+        # The floor was 8.2 until 2026-10-26. It was raised because PHP 8.2
+        # leaves security support on 2026-12-31, and a project should not
+        # advertise a minimum that stops receiving patches two months later.
+        # 8.3 is security-supported to 2027-12-31 and is widely available on
+        # shared hosting, so it stays installable by someone other than us.
+        #
+        # These two legs are not decoration: they have already disagreed. The
+        # `$argv` PHPStan findings appeared on 8.5 and not on the older leg,
+        # because register_argc_argv differed between the two runtimes.
+        #
+        # When 8.3 nears its own end of life, raise this, composer.json's
+        # require, and its platform pin together — one decision in three places.
+        php: ['8.3', '8.5']
 
     services:
       # MariaDB rather than MySQL: migrations 002-004 are raw SQL written

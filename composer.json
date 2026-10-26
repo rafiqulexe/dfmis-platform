@@ -4,7 +4,7 @@
     "type": "project",
     "license": "proprietary",
     "require": {
-        "php": ">=8.2"
+        "php": ">=8.3"
     },
     "require-dev": {
         "phpstan/phpstan": "^2.2",
@@ -22,7 +22,7 @@
         "sort-packages": true,
         "optimize-autoloader": false,
         "platform": {
-            "php": "8.2.0"
+            "php": "8.3.0"
         }
     },
     "scripts": {
