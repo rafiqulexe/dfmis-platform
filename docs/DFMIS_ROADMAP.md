@@ -600,7 +600,15 @@ adversarial prompting; every proposed action is confirmable and audited.
 - Parlour and robot integration
 - Feed formulation and feed-conversion ratio
 - Reproduction module: heat detection, insemination, pregnancy checks,
-  calving, genealogy. `cows.reproductive_status` exists and is still unused.
+  calving, genealogy. `cows.reproductive_status` exists, and the earlier claim
+  here that it "is still unused" was **wrong**: it is read in two places —
+  `dashboard.php` counts `reproductive_status = 'pregnant'`, and `ai_vet.php`
+  includes it in the animal record handed to the assistant. What does not
+  exist is anything that **writes** it; only `seed_demo_data.php` sets it. So
+  the dashboard presents a breeding figure, and the AI reasons about a
+  reproductive state, that no workflow maintains. Either give the field an
+  owner in this phase or stop displaying it — a stale number that looks
+  authoritative is worse than an absent one.
 - Lactation curve modelling and yield forecasting
 - Breeding value and genetic merit tracking
 
