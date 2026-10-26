@@ -23,7 +23,7 @@
 # green result can never mean "half of this did not run".
 #
 # Set DFMS_PHP if PHP is not on PATH, e.g.
-#   DFMS_PHP=C:/xampp/php/php.exe bash tests/run_all.sh
+#   DFMS_PHP=C:/php85/php.exe bash tests/run_all.sh
 # ============================================================================
 
 set -u
@@ -31,17 +31,28 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BASE="${DFMS_BASE_URL:-http://localhost:8000}"
 
-# Locate PHP: explicit override, then PATH, then the common XAMPP location.
+# Locate PHP: explicit override, then PATH, then the known local installs.
+#
+# C:/php85 comes before the XAMPP copy deliberately. XAMPP bundles whatever PHP
+# shipped with it — 8.2.12 here — and PHP 8.2 leaves security support on
+# 2026-12-31, so it must never be the silent default once a current runtime is
+# installed. An unexpected fallback to it would quietly test the wrong engine.
 if [ -n "${DFMS_PHP:-}" ]; then
     PHP="$DFMS_PHP"
 elif command -v php >/dev/null 2>&1; then
     PHP="php"
+elif [ -x "C:/php85/php.exe" ]; then
+    PHP="C:/php85/php.exe"
 elif [ -x "C:/xampp/php/php.exe" ]; then
     PHP="C:/xampp/php/php.exe"
 else
     echo "ERROR: PHP not found. Set DFMS_PHP to the php binary." >&2
     exit 1
 fi
+
+# State the engine under test. A suite that passes on an outdated runtime and a
+# suite that passes on the current one are not the same result.
+echo "PHP under test: $("$PHP" -r 'echo PHP_VERSION;') ($PHP)"
 
 SUITES_RUN=0
 SUITES_FAILED=0

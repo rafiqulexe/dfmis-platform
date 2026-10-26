@@ -11,15 +11,43 @@ variable name is given and the value is left to your own `.env`.
 
 | Requirement | Version | Notes |
 |---|---|---|
-| **PHP** | 8.1+ (developed on 8.2) | Extensions: `pdo_mysql`, `mbstring`, `curl`, `json`, `openssl`. `zip` is needed by Composer. |
+| **PHP** | 8.2 minimum, **8.5 recommended** (developed on 8.5.12) | Extensions: `pdo_mysql`, `mbstring`, `curl`, `fileinfo`, `json`, `openssl`. `zip` is needed by Composer. Do **not** enable `intl` — see [The intl extension](#the-intl-extension). |
 | **MariaDB** | 10.4+ | **MariaDB, not MySQL** — migrations 002–004 are raw SQL written against it. See [Database engine](#database-engine). |
 | **Composer** | 2.x | Dev tooling only; the application has no runtime dependencies. |
 | **bash + curl** | any | The integration suites are shell scripts. Git Bash is fine on Windows. |
 
-XAMPP 8.2 supplies PHP and MariaDB together and is the reference local setup.
+XAMPP supplies MariaDB and is the reference local setup for the database.
 
-> **XAMPP note:** `zip` ships disabled. Uncomment `extension=zip` in
-> `C:\xampp\php\php.ini` or Composer will be slow and warn on every command.
+**PHP is installed separately from XAMPP and deliberately so.** XAMPP bundles
+whatever PHP it shipped with — 8.2.12 here, built October 2023 — and that
+version leaves security support on 2026-12-31. The reference local runtime is
+therefore a standalone **PHP 8.5.12** at `C:\php85`, used for the CLI, the
+built-in dev server and the whole test harness. XAMPP's own PHP is left in
+place, unused by this project.
+
+Apache is not involved: the application is served by PHP's built-in server
+(`php -S`), so no `mod_php` or FastCGI wiring is needed and the two PHP
+installs cannot conflict.
+
+> **Windows note:** PHP 8.5 builds are linked against the Visual C++ 2015–2022
+> runtime 14.44 or newer. An older runtime fails hard — PHP refuses to start
+> with `VCRUNTIME140.dll ... is not compatible with this PHP build`. Install
+> the current [VC++ x64 redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+> first.
+
+> **Composer note:** `zip` must be enabled or Composer is slow and warns on
+> every command. It is already enabled in `C:\php85\php.ini`.
+
+### The intl extension
+
+`includes/i18n.php` branches on `extension_loaded('intl')`: with it, numbers
+are formatted through `NumberFormatter`; without it, a built-in fallback runs.
+
+**The project is developed and tested on the fallback path**, because the
+reference environment has never had `intl` loaded. Enabling it silently
+changes number formatting across the application and is not covered by any
+test. Treat turning it on as a change that needs its own verification, not as
+environment tidying.
 
 ### Database engine
 
@@ -109,7 +137,7 @@ variable by name with placeholder values only.
 On Windows, if PHP is not on `PATH`:
 
 ```bash
-DFMS_PHP=C:/xampp/php/php.exe bash tests/run_all.sh
+DFMS_PHP=C:/php85/php.exe bash tests/run_all.sh
 ```
 
 ---

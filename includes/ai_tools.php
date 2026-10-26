@@ -463,7 +463,10 @@ final class AiToolGetRecentAlerts extends AiTool
 
     public function requiredPermission(): string { return 'alerts.view'; }
 
-    protected function run(PDO $conn, array $input): ?array
+    // Narrower than the abstract's ?array on purpose: an alert list always
+    // exists, even when it is empty. Only the single-record lookups above can
+    // legitimately miss and return null.
+    protected function run(PDO $conn, array $input): array
     {
         // Cast and clamped before it reaches the query. The LIMIT is
         // interpolated because no placeholder exists for it, which is exactly
@@ -534,7 +537,9 @@ final class AiToolGetFarmSummary extends AiTool
 
     public function requiredPermission(): string { return 'health.view'; }
 
-    protected function run(PDO $conn, array $input): ?array
+    // Narrower than the abstract's ?array on purpose: a farm summary is always
+    // computable for the farm in scope, so there is no missing case to report.
+    protected function run(PDO $conn, array $input): array
     {
         $counters = healthFarmCounters($conn);
 

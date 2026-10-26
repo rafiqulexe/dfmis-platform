@@ -63,9 +63,23 @@ they already do.
 | Package | Version | Why |
 |---|---|---|
 | `phpunit/phpunit` | ^10.5 | A real assertion library, fixtures and lifecycle hooks for **new** tests. The bespoke harness has no setup/teardown and no isolation between cases. |
-| `phpstan/phpstan` | ^1.12 | Catches, before runtime, the class of defect behind baseline finding **C-1** — a null reaching a non-nullable parameter and fataling in production. `php -l` cannot see that. |
+| `phpstan/phpstan` | ^2.2 | Catches, before runtime, the class of defect behind baseline finding **C-1** — a null reaching a non-nullable parameter and fataling in production. `php -l` cannot see that. |
 
 Two direct dependencies, both dev-only. Nothing else was added.
+
+### Why PHPStan moved from ^1.12 to ^2.2
+
+Not housekeeping — 1.12 is **wrong** on a current runtime. Its last feature
+release predates PHP 8.5, and running it on 8.5.12 produced three false
+positives (`Variable $argv might not be defined` in `tools/lint.php`,
+`tools/test-db.php` and `database/migrate.php`) that do not appear on 8.2.12
+with the identical configuration and an explicit `register_argc_argv=On`.
+
+A static analyser that invents findings on the runtime you ship is worse than
+none: it trains you to ignore it. 2.3.2 reports zero on both 8.2.12 and
+8.5.12, and the two genuine findings the upgrade did surface — two
+`AiTool::run()` overrides declaring `?array` while never returning null — were
+fixed by narrowing the return types, not baselined.
 
 ---
 
@@ -92,6 +106,23 @@ PHPUnit covers **new, pure unit tests** — 37 tests, 102 assertions:
 
 This is **not fake adoption**: these tests assert things nothing else does, and
 two of them are security controls in their own right.
+
+### Deprecations are fatal
+
+`phpunit.xml` sets `failOnWarning`, `failOnRisky`, `failOnNotice` **and
+`failOnDeprecation`**, all true.
+
+The last of those exists because of a concrete miss. A PHP 8.4 deprecation —
+an implicitly nullable `string $name = null` in `ProductionDomainTest` — rode
+along silently for the whole life of the 8.2 runtime. `php -l` does not see
+deprecations, PHPStan is not pointed at `tests/`, and PHPUnit reported it as a
+note while still printing `OK`. It only became visible when the runtime moved
+to 8.5.12, and only because the upgrade run was read line by line.
+
+A deprecation is the one warning a language gives you *before* it breaks your
+code. Letting it print next to the word `OK` wastes that notice. Now the suite
+fails on it, which means the next PHP release announces itself here rather than
+in production. Verified clean on both 8.2.12 and 8.5.12 with the flag on.
 
 ### Why HTTP tests stayed in shell
 
@@ -215,6 +246,23 @@ reasonable future work.
 `APP_ENV`, `DB_*`) so their use is not reported as unknown, drowning real
 findings. It is never loaded by the application.
 
+`tests/` is **not** analysed either, and that gap has already cost something:
+a PHP 8.4 deprecation (an implicitly nullable `string $name = null` in
+`ProductionDomainTest`) sat unreported until the runtime moved to 8.5, because
+neither `php -l` nor PHPStan's configured scope could see it. The guard added
+in response is `failOnDeprecation="true"` in `phpunit.xml` — see
+[Deprecations are fatal](#deprecations-are-fatal) — rather than widening the
+analysed scope, which remains future work.
+
+### The target PHP version is pinned
+
+`phpVersion: 80512` in `phpstan.neon`. Analysis is pinned to the runtime the
+project actually runs on, so PHPStan reasons about the right standard-library
+signatures and the right set of deprecations. It is deliberately a separate
+setting from the floor `composer.json` declares: analysis targets the newest
+runtime, while the floor states the oldest one the suites still prove. Raise
+both together.
+
 ---
 
 ## 5. Code quality workflow
@@ -241,7 +289,7 @@ changes in noise and produce a diff nobody can review.
 `.github/workflows/ci.yml` — push, PR and manual dispatch.
 
 ```
-checkout → PHP 8.2 → cache vendor → composer install
+checkout → PHP 8.2 AND 8.5 (matrix) → cache vendor → composer install
         → lint → PHPStan
         → MariaDB service → schema → migrations → idempotency check
         → seed → create dfms_test

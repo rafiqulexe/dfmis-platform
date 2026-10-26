@@ -61,7 +61,7 @@ parameters:
 
     # PHP version the code actually runs on, so PHPStan reasons about the right
     # standard library signatures and deprecations.
-    phpVersion: 80212
+    phpVersion: 80512
 
     # Report anything PHPStan cannot verify rather than assuming it is fine.
     treatPhpDocTypesAsCertain: false

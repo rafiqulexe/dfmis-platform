@@ -34,8 +34,23 @@ permissions:
 
 jobs:
   quality:
-    name: Lint, analyse and test
+    name: PHP ${{ matrix.php }} — lint, analyse and test
     runs-on: ubuntu-latest
+
+    strategy:
+      # Both legs always run. A failure on the floor and a failure on the
+      # current runtime are different findings, and cancelling one to report
+      # the other would hide half the result.
+      fail-fast: false
+      matrix:
+        # 8.5 is the runtime development and static analysis target.
+        # 8.2 is the floor composer.json declares — and a declared floor that
+        # nothing exercises is a guess, not a guarantee.
+        #
+        # PHP 8.2 leaves security support on 2026-12-31. When it does, raise
+        # the floor here, in composer.json's require and in its platform pin
+        # together; they are one decision expressed in three places.
+        php: ['8.2', '8.5']
 
     services:
       # MariaDB rather than MySQL: migrations 002-004 are raw SQL written
@@ -71,9 +86,12 @@ jobs:
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
-          # zip is required by Composer; pdo_mysql and mbstring by the app.
-          extensions: pdo_mysql, mbstring, zip, curl, json
+          php-version: ${{ matrix.php }}
+          # zip is required by Composer; the rest by the app. fileinfo backs
+          # the upload MIME detection (finfo_open in includes/storage.php), so
+          # a runner without it would fail at the first upload test rather
+          # than at setup, which is a much harder failure to read.
+          extensions: pdo_mysql, mbstring, zip, curl, json, fileinfo
           coverage: none
           tools: composer:v2
 
@@ -81,8 +99,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: vendor
-          key: composer-${{ runner.os }}-${{ hashFiles('composer.json') }}
-          restore-keys: composer-${{ runner.os }}-
+          key: composer-${{ runner.os }}-php${{ matrix.php }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-php${{ matrix.php }}-
 
       - name: Install dependencies
         run: composer install --no-interaction --no-progress --prefer-dist

@@ -139,7 +139,7 @@ final class ProductionDomainTest extends TestCase
         return $itemId;
     }
 
-    private function makeRation(string $name = null): int
+    private function makeRation(?string $name = null): int
     {
         $id = feedCreateRation(self::$conn, ['name' => $name ?? ('P6 Ration ' . bin2hex(random_bytes(4)))]);
         $this->rations[] = $id;
